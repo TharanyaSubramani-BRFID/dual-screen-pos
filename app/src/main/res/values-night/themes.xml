@@ -1,0 +1,10 @@
+<resources>
+    <!-- Dark mode overrides (parent already handles dark via DayNight) -->
+    <style name="Theme.ChannelDoorPOS" parent="Theme.MaterialComponents.DayNight.NoActionBar">
+        <item name="colorPrimary">#00B4D8</item>
+        <item name="colorPrimaryVariant">#0097A7</item>
+        <item name="colorSecondary">#00B4D8</item>
+        <item name="android:windowBackground">@color/colorBackground</item>
+        <item name="android:statusBarColor">@color/colorStatusBar</item>
+    </style>
+</resources>

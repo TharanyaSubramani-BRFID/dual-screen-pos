@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="colorBackground">#1A1A2E</color>
+    <color name="colorSurface">#162032</color>
+    <color name="colorAccent">#00B4D8</color>
+    <color name="colorScanning">#0D3B66</color>
+    <color name="colorScanningBg">#0D3B66</color>
+    <color name="colorScanningAccent">#48CAE4</color>
+    <color name="colorSuccess">#1B4332</color>
+    <color name="colorSuccessAccent">#52B788</color>
+    <color name="colorError">#7B0000</color>
+    <color name="colorErrorAccent">#FF1744</color>
+    <color name="colorTextPrimary">#FFFFFF</color>
+    <color name="colorTextSecondary">#9E9E9E</color>
+    <color name="colorStatusBar">#0D1220</color>
+    <color name="colorBinWarning">#F57C00</color>
+    <color name="colorBinWarningBg">#3E2000</color>
+    <color name="black">#FF000000</color>
+    <color name="white">#FFFFFFFF</color>
+</resources>
