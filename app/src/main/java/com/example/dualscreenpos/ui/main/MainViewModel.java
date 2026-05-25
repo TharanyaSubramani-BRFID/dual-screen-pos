@@ -29,9 +29,9 @@ public class MainViewModel extends ViewModel {
         public static class ItemFound extends UiState {
             public final ReturnRoute route;
             public ItemFound(ReturnRoute route) { this.route = route; }
-            public String getItemName() { return route.skuDetail != null ? route.skuDetail.name : ""; }
+            public String getItemName() { return route.skuDetail != null ? route.skuDetail.productName : ""; }
             public String getFormattedPrice() {
-                return route.skuDetail != null ? String.format("$%.2f", route.skuDetail.price) : "";
+                return route.skuDetail != null ? String.format("₹%.2f", route.skuDetail.salePrice) : "";
             }
         }
 
@@ -45,6 +45,15 @@ public class MainViewModel extends ViewModel {
         public static class Error extends UiState {
             public final String message;
             public Error(String message) { this.message = message; }
+        }
+
+        public static class BlockedItem extends UiState {
+            public final String title;
+            public final String message;
+            public BlockedItem(String title, String message) {
+                this.title = title;
+                this.message = message;
+            }
         }
     }
 
@@ -85,8 +94,22 @@ public class MainViewModel extends ViewModel {
 
     public void startScan() {
         uiStateLiveData.postValue(new UiState.Scanning());
+        // In mock mode the user taps MOCK SCAN on the scanning screen to fire the EPC.
+        // In real mode, kick off the hardware scan immediately.
+        if (!settingsRepo.isMockMode()) {
+            scanNow();
+        }
+    }
 
-        // Wait for Scanning state to confirm the new scan started, then process terminal result.
+    /** Called when user picks an EPC from the mock list — skips the reader entirely. */
+    public void lookupEpc(String epc) {
+        fetchItemDetails(epc);
+    }
+
+    /** Fires one EPC read. Call from ScanningFragment's MOCK SCAN button in mock mode,
+     *  or automatically from startScan() in real mode. */
+    public void scanNow() {
+        removeScanObserver();
         pendingScanObserver = new Observer<ReaderState>() {
             boolean scanStarted = false;
 
@@ -112,20 +135,19 @@ public class MainViewModel extends ViewModel {
         readerManager.scanOnce();
     }
 
-    public void confirmReturn(StorageBin selectedBin) {
-        if (currentRoute == null) return;
+    public void confirmCheckout() {
+        if (currentRoute == null || currentRoute.itemRecord == null) return;
         uiStateLiveData.postValue(new UiState.Processing());
 
         final ReturnRoute route = currentRoute;
-        TransactionRequest req = route.requiresBin
-                ? TransactionRequest.forReturn(route.itemRecord.rfid, selectedBin.rfid)
-                : TransactionRequest.forReturnToStore(route.itemRecord.rfid);
+        TransactionRequest req = TransactionRequest.forCheckout(
+                route.itemRecord.rfid, route.itemRecord.storageBinRfid);
 
         RetailApi.getInstance(settingsRepo.getBaseUrl())
                 .submitTransaction(req, new RetailApi.ApiCallback<com.example.dualscreenpos.data.model.TransactionResult>() {
                     @Override
                     public void onSuccess(com.example.dualscreenpos.data.model.TransactionResult result) {
-                        String itemName = route.skuDetail != null ? route.skuDetail.name : "";
+                        String itemName = route.skuDetail != null ? route.skuDetail.productName : "";
                         uiStateLiveData.postValue(new UiState.Success(itemName));
                     }
                     @Override
@@ -142,7 +164,14 @@ public class MainViewModel extends ViewModel {
             @Override
             public void onSuccess(ReturnRoute route) {
                 if ("BLOCKED".equals(route.returnType)) {
-                    uiStateLiveData.postValue(new UiState.Error(route.blockReason));
+                    if ("ALREADY_SOLD".equals(route.blockReason)) {
+                        uiStateLiveData.postValue(new UiState.BlockedItem(
+                                "Item Already Sold",
+                                "This item has already been checked out and marked as sold."));
+                    } else {
+                        uiStateLiveData.postValue(new UiState.BlockedItem(
+                                "Not Available", route.blockReason));
+                    }
                 } else {
                     currentRoute = route;
                     uiStateLiveData.postValue(new UiState.ItemFound(route));
@@ -150,7 +179,13 @@ public class MainViewModel extends ViewModel {
             }
             @Override
             public void onFailure(String error) {
-                uiStateLiveData.postValue(new UiState.Error(error));
+                if ("NOT_FOUND".equals(error)) {
+                    uiStateLiveData.postValue(new UiState.BlockedItem(
+                            "Item Not Found",
+                            "This EPC is not registered in the system."));
+                } else {
+                    uiStateLiveData.postValue(new UiState.Error(error));
+                }
             }
         });
     }

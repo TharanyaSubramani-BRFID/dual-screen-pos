@@ -9,8 +9,10 @@ import androidx.lifecycle.Observer;
 import androidx.preference.EditTextPreference;
 import androidx.preference.ListPreference;
 import androidx.preference.Preference;
+import androidx.preference.PreferenceCategory;
 import androidx.preference.PreferenceFragmentCompat;
 import androidx.preference.PreferenceScreen;
+import androidx.preference.SwitchPreferenceCompat;
 
 import com.example.dualscreenpos.R;
 import com.example.dualscreenpos.data.model.StorageBin;
@@ -130,12 +132,57 @@ public class SettingsActivity extends AppCompatActivity {
                 return true;
             });
 
-            screen.addPreference(readerIpPref);
-            screen.addPreference(baseUrlPref);
-            screen.addPreference(antCountPref);
-            screen.addPreference(testConnectionPref);
-            screen.addPreference(reloadBinsPref);
-            screen.addPreference(testScanPref);
+            // ── Mock Mode section ─────────────────────────────────────────────
+            PreferenceCategory mockCategory = new PreferenceCategory(ctx);
+            mockCategory.setTitle("Mock Mode (No Hardware)");
+
+            SwitchPreferenceCompat mockModePref = new SwitchPreferenceCompat(ctx);
+            mockModePref.setKey("mock_mode");
+            mockModePref.setTitle("Enable Mock Mode");
+            mockModePref.setSummary("Cycles through 20 hardcoded EPCs without a real reader");
+            mockModePref.setChecked(settings.isMockMode());
+            mockModePref.setOnPreferenceChangeListener((pref, newValue) -> {
+                boolean enabled = (Boolean) newValue;
+                settings.setMockMode(enabled);
+                // When enabling mock mode, immediately post Idle so the dot turns green.
+                if (enabled) {
+                    RfidCardReaderManager.getInstance().connect("");
+                }
+                return true;
+            });
+
+            Preference resetMockPref = new Preference(ctx);
+            resetMockPref.setTitle("Reset Mock Sequence");
+            int initIdx = RfidCardReaderManager.getInstance().getMockCurrentIndex();
+            int initTotal = RfidCardReaderManager.getInstance().getMockEpcCount();
+            resetMockPref.setSummary("Next scan: EPC #" + (initIdx + 1) + " of " + initTotal);
+            resetMockPref.setOnPreferenceClickListener(pref -> {
+                RfidCardReaderManager.getInstance().resetMockIndex();
+                pref.setSummary("Next scan: EPC #1 of " + RfidCardReaderManager.getInstance().getMockEpcCount());
+                Toast.makeText(ctx, "Mock sequence reset to EPC #1", Toast.LENGTH_SHORT).show();
+                return true;
+            });
+
+            // ── Hardware section ──────────────────────────────────────────────
+            PreferenceCategory hwCategory = new PreferenceCategory(ctx);
+            hwCategory.setTitle("Hardware");
+
+            screen.addPreference(mockCategory);
+            mockCategory.addPreference(mockModePref);
+            mockCategory.addPreference(resetMockPref);
+
+            screen.addPreference(hwCategory);
+            hwCategory.addPreference(readerIpPref);
+            hwCategory.addPreference(antCountPref);
+            hwCategory.addPreference(testConnectionPref);
+            hwCategory.addPreference(testScanPref);
+
+            PreferenceCategory backendCategory = new PreferenceCategory(ctx);
+            backendCategory.setTitle("Backend");
+            screen.addPreference(backendCategory);
+            backendCategory.addPreference(baseUrlPref);
+            backendCategory.addPreference(reloadBinsPref);
+
             setPreferenceScreen(screen);
         }
     }

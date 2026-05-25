@@ -41,9 +41,25 @@
         android:text="@string/reading_for_2s"
         android:textColor="@color/colorTextSecondary"
         android:textSize="15sp"
-        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintBottom_toTopOf="@+id/btn_mock_scan"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toBottomOf="@+id/tv_scanning_main"/>
+
+    <Button
+        android:id="@+id/btn_mock_scan"
+        android:layout_width="220dp"
+        android:layout_height="56dp"
+        android:layout_marginTop="40dp"
+        android:backgroundTint="#FF9800"
+        android:text="MOCK SCAN"
+        android:textColor="#FFFFFF"
+        android:textSize="20sp"
+        android:textStyle="bold"
+        android:visibility="gone"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@+id/tv_scanning_sub"/>
 
 </androidx.constraintlayout.widget.ConstraintLayout>

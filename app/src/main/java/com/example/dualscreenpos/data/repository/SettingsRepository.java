@@ -45,4 +45,12 @@ public class SettingsRepository {
     public void setAntCount(int count) {
         prefs.edit().putInt("ant_count", count).apply();
     }
+
+    public boolean isMockMode() {
+        return prefs.getBoolean("mock_mode", false);
+    }
+
+    public void setMockMode(boolean enabled) {
+        prefs.edit().putBoolean("mock_mode", enabled).apply();
+    }
 }

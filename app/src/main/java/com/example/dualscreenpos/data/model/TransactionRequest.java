@@ -27,4 +27,13 @@ public class TransactionRequest {
         req.tagCount = 1;
         return req;
     }
+
+    public static TransactionRequest forCheckout(String rfid, String storageBinRfid) {
+        TransactionRequest req = new TransactionRequest();
+        req.type = "SOLD";
+        req.storageBinRfid = storageBinRfid != null ? storageBinRfid : "";
+        req.rfids = Collections.singletonList(rfid);
+        req.tagCount = 1;
+        return req;
+    }
 }

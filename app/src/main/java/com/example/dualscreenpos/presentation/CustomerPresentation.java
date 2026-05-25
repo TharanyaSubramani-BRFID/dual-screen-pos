@@ -64,7 +64,7 @@ public class CustomerPresentation extends Presentation {
 
     public void showProcessing() {
         tvStatus.setTextSize(44f);
-        tvStatus.setText("Processing return...");
+        tvStatus.setText("Processing checkout...");
         tvItemName.setVisibility(View.GONE);
         tvPrice.setVisibility(View.GONE);
         tvBottomLabel.setText("");
@@ -72,7 +72,7 @@ public class CustomerPresentation extends Presentation {
 
     public void showSuccess(String itemName) {
         layoutRoot.setBackgroundColor(Color.parseColor("#1B4332"));
-        tvStatus.setText("Return Accepted");
+        tvStatus.setText("Checkout Accepted");
         tvItemName.setVisibility(View.VISIBLE);
         tvItemName.setText(itemName);
         tvPrice.setVisibility(View.GONE);

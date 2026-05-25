@@ -38,7 +38,13 @@ public class ItemRepository {
             }
             @Override
             public void onFailure(String error) {
-                cb.onFailure("Item lookup failed: " + error);
+                if ("NOT_FOUND".equals(error)) {
+                    cb.onFailure("NOT_FOUND");
+                } else if (error.startsWith("NETWORK_ERROR:")) {
+                    cb.onFailure("Network error — check backend URL in Settings.\n(" + error.substring(14) + ")");
+                } else {
+                    cb.onFailure("Item lookup failed: " + error);
+                }
             }
         });
     }
@@ -49,22 +55,22 @@ public class ItemRepository {
         route.skuDetail = sku;
 
         switch (item.status) {
-            case "DISPATCHED":
             case "IN_STORE":
-                route.returnType = "RETURN";
-                route.requiresBin = true;
+            case "DISPATCHED":
+                route.returnType = "CHECKOUT";
+                route.requiresBin = false;
                 break;
             case "SOLD":
-                route.returnType = "RETURN_TO_STORE";
-                route.requiresBin = false;
+                route.returnType = "BLOCKED";
+                route.blockReason = "ALREADY_SOLD";
                 break;
             case "IN_WAREHOUSE":
                 route.returnType = "BLOCKED";
-                route.blockReason = "Item already returned — in warehouse";
+                route.blockReason = "Item is in the warehouse and not available for checkout.";
                 break;
             default:
                 route.returnType = "BLOCKED";
-                route.blockReason = "Cannot return this item";
+                route.blockReason = "Item status '" + item.status + "' is not eligible for checkout.";
                 break;
         }
         return route;

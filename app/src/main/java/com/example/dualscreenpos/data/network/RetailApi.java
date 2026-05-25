@@ -43,8 +43,8 @@ public class RetailApi {
     private RetailApi(String baseUrl) {
         this.baseUrl = baseUrl.endsWith("/") ? baseUrl.substring(0, baseUrl.length() - 1) : baseUrl;
         this.client = new OkHttpClient.Builder()
-                .connectTimeout(5, TimeUnit.SECONDS)
-                .readTimeout(8, TimeUnit.SECONDS)
+                .connectTimeout(15, TimeUnit.SECONDS)
+                .readTimeout(20, TimeUnit.SECONDS)
                 .build();
     }
 
@@ -64,11 +64,15 @@ public class RetailApi {
         client.newCall(request).enqueue(new Callback() {
             @Override
             public void onFailure(Call call, IOException e) {
-                deliver(() -> cb.onFailure("Network error: " + e.getMessage()));
+                deliver(() -> cb.onFailure("NETWORK_ERROR:" + e.getMessage()));
             }
             @Override
             public void onResponse(Call call, Response response) throws IOException {
                 String body = response.body() != null ? response.body().string() : "";
+                if (response.code() == 404) {
+                    deliver(() -> cb.onFailure("NOT_FOUND"));
+                    return;
+                }
                 if (!response.isSuccessful()) {
                     deliver(() -> cb.onFailure("Server error " + response.code() + ": " + parseErrorMessage(body)));
                     return;
@@ -83,9 +87,9 @@ public class RetailApi {
         });
     }
 
-    public void getSkuById(String skuId, ApiCallback<SkuDetail> cb) {
+    public void getSkuById(int skuId, ApiCallback<SkuDetail> cb) {
         Request request = new Request.Builder()
-                .url(baseUrl + "/api/v1/sku/" + skuId)
+                .url(baseUrl + "/api/v1/skus/get/" + skuId)
                 .get()
                 .build();
         client.newCall(request).enqueue(new Callback() {

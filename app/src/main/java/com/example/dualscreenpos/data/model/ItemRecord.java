@@ -5,7 +5,7 @@ import com.google.gson.annotations.SerializedName;
 public class ItemRecord {
     public String id;
     public String rfid;
-    @SerializedName("sku_id") public String skuId;
+    @SerializedName("sku_id") public int skuId;
     @SerializedName("rack_id") public String rackId;
     @SerializedName("storage_bin_rfid") public String storageBinRfid;
     public String status;

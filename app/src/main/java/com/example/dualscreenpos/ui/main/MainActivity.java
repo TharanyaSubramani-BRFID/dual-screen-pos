@@ -48,15 +48,9 @@ public class MainActivity extends AppCompatActivity {
 
         viewModel = new ViewModelProvider(this).get(MainViewModel.class);
 
-        viewModel.getReaderStateLiveData().observe(this, state -> {
-            if (state == null) {
-                setDot(Color.GRAY, "Not connected");
-            } else if (state instanceof ReaderState.ReaderError) {
-                setDot(Color.parseColor("#F44336"), "Error");
-            } else {
-                setDot(Color.parseColor("#4CAF50"), SettingsRepository.getInstance().getReaderIp());
-            }
-        });
+        viewModel.getReaderStateLiveData().observe(this, state -> updateStatusBar(state));
+
+        // Also refresh the status bar when returning from Settings (mock mode may have changed).
 
         viewModel.getUiStateLiveData().observe(this, this::handleUiState);
 
@@ -95,6 +89,16 @@ public class MainActivity extends AppCompatActivity {
             String msg = ((MainViewModel.UiState.Error) state).message;
             showFragment(ErrorFragment.newInstance(msg));
             if (customerPresentation != null) customerPresentation.showError(msg);
+
+        } else if (state instanceof MainViewModel.UiState.BlockedItem) {
+            MainViewModel.UiState.BlockedItem s = (MainViewModel.UiState.BlockedItem) state;
+            showFragment(new IdleFragment());
+            new android.app.AlertDialog.Builder(this)
+                    .setTitle(s.title)
+                    .setMessage(s.message)
+                    .setPositiveButton("OK", (d, w) -> {})
+                    .setCancelable(false)
+                    .show();
         }
     }
 
@@ -110,6 +114,27 @@ public class MainActivity extends AppCompatActivity {
         if (displays.length > 0) {
             customerPresentation = new CustomerPresentation(this, displays[0]);
             customerPresentation.show();
+        }
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        // Refresh after returning from Settings in case mock mode was toggled.
+        updateStatusBar(viewModel != null ? viewModel.getReaderStateLiveData().getValue() : null);
+    }
+
+    private void updateStatusBar(ReaderState state) {
+        if (SettingsRepository.getInstance().isMockMode()) {
+            setDot(Color.parseColor("#FF9800"), "MOCK MODE");
+            return;
+        }
+        if (state == null) {
+            setDot(Color.GRAY, "Not connected");
+        } else if (state instanceof ReaderState.ReaderError) {
+            setDot(Color.parseColor("#F44336"), "Error");
+        } else {
+            setDot(Color.parseColor("#4CAF50"), SettingsRepository.getInstance().getReaderIp());
         }
     }
 

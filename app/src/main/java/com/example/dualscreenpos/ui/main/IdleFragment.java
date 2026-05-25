@@ -28,7 +28,10 @@ public class IdleFragment extends Fragment {
         super.onViewCreated(view, savedInstanceState);
         MainViewModel viewModel = new ViewModelProvider(requireActivity()).get(MainViewModel.class);
 
+        // In real mode: starts the scan immediately.
+        // In mock mode: navigates to the scanning screen; user taps MOCK SCAN there.
         view.findViewById(R.id.btn_scan).setOnClickListener(v -> viewModel.startScan());
+
         view.findViewById(R.id.btn_settings_idle).setOnClickListener(v ->
                 startActivity(new Intent(requireContext(), SettingsActivity.class)));
     }
