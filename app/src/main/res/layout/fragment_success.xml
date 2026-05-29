@@ -2,56 +2,65 @@
 <androidx.constraintlayout.widget.ConstraintLayout
     xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/layout_success_root"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="@color/colorSuccess">
 
+    <!-- Large illustration icon — pops in with bounce -->
     <ImageView
-        android:id="@+id/iv_check"
-        android:layout_width="140dp"
-        android:layout_height="140dp"
-        android:src="@drawable/ic_check_circle"
-        android:contentDescription="@string/success"
+        android:id="@+id/iv_success_icon"
+        android:layout_width="160dp"
+        android:layout_height="160dp"
         android:scaleX="0"
         android:scaleY="0"
-        app:tint="@color/colorSuccessAccent"
-        app:layout_constraintBottom_toTopOf="@+id/tv_return_accepted"
+        android:src="@drawable/ic_success_checkout"
+        android:contentDescription="@string/success"
+        app:layout_constraintBottom_toTopOf="@+id/tv_success_title"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent"
-        app:layout_constraintVertical_chainStyle="packed"/>
+        app:layout_constraintVertical_chainStyle="packed"
+        app:layout_constraintVertical_bias="0.38"/>
 
+    <!-- Main title -->
     <TextView
-        android:id="@+id/tv_return_accepted"
+        android:id="@+id/tv_success_title"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_marginTop="20dp"
-        android:text="@string/return_accepted"
-        android:textColor="@color/colorSuccessAccent"
-        android:textSize="44sp"
+        android:layout_marginTop="28dp"
+        android:alpha="0"
+        android:gravity="center"
+        android:textSize="32sp"
         android:textStyle="bold"
+        android:textColor="@color/colorSuccessAccent"
         app:layout_constraintBottom_toTopOf="@+id/tv_success_item"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@+id/iv_check"/>
+        app:layout_constraintTop_toBottomOf="@+id/iv_success_icon"/>
 
+    <!-- Item count / detail -->
     <TextView
         android:id="@+id/tv_success_item"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_marginTop="8dp"
+        android:layout_marginTop="10dp"
+        android:alpha="0"
+        android:gravity="center"
         android:textColor="@color/colorTextPrimary"
-        android:textSize="20sp"
+        android:textSize="18sp"
         app:layout_constraintBottom_toTopOf="@+id/tv_return_timer"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@+id/tv_return_accepted"/>
+        app:layout_constraintTop_toBottomOf="@+id/tv_success_title"/>
 
+    <!-- Countdown -->
     <TextView
         android:id="@+id/tv_return_timer"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_marginTop="16dp"
+        android:layout_marginTop="20dp"
+        android:alpha="0"
         android:text="@string/returning_home_4s"
         android:textColor="@color/colorTextSecondary"
         android:textSize="13sp"

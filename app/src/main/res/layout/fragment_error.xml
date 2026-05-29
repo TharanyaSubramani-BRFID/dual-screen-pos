@@ -4,7 +4,7 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#1C0A0A">
+    android:background="@color/colorError">
 
     <ImageView
         android:id="@+id/iv_error_icon"
@@ -12,7 +12,7 @@
         android:layout_height="100dp"
         android:src="@drawable/ic_error"
         android:contentDescription="@string/error"
-        app:tint="#FF5252"
+        app:tint="@color/colorErrorAccent"
         app:layout_constraintBottom_toTopOf="@+id/tv_error_message"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
@@ -54,7 +54,7 @@
             android:layout_marginEnd="8dp"
             android:backgroundTint="@color/colorAccent"
             android:text="@string/try_again"
-            android:textColor="@color/colorTextPrimary"/>
+            android:textColor="#FFFFFF"/>
 
         <Button
             android:id="@+id/btn_cancel_error"

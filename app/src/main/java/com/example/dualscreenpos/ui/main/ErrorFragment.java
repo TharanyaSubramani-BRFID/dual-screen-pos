@@ -39,9 +39,11 @@ public class ErrorFragment extends Fragment {
         String msg = getArguments() != null ? getArguments().getString("error_message", "") : "";
         ((TextView) view.findViewById(R.id.tv_error_message)).setText(msg);
 
+        // TRY AGAIN — if cart has items, go back to operations screen; otherwise go idle
         view.findViewById(R.id.btn_try_again).setOnClickListener(v ->
-                viewModel.postUiState(new MainViewModel.UiState.Idle()));
+                viewModel.resumeCart());
+        // CANCEL — clear cart and go to idle
         view.findViewById(R.id.btn_cancel_error).setOnClickListener(v ->
-                viewModel.postUiState(new MainViewModel.UiState.Idle()));
+                viewModel.cancelAndClearCart());
     }
 }

@@ -53,4 +53,5 @@ public class SettingsRepository {
     public void setMockMode(boolean enabled) {
         prefs.edit().putBoolean("mock_mode", enabled).apply();
     }
+
 }

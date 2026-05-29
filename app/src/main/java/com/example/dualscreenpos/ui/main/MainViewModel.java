@@ -5,15 +5,21 @@ import androidx.lifecycle.MutableLiveData;
 import androidx.lifecycle.Observer;
 import androidx.lifecycle.ViewModel;
 
+import com.example.dualscreenpos.data.model.BulkUploadRequest;
+import com.example.dualscreenpos.data.model.CheckoutRequest;
+import com.example.dualscreenpos.data.model.CheckoutResponse;
 import com.example.dualscreenpos.data.model.ReturnRoute;
 import com.example.dualscreenpos.data.model.StorageBin;
 import com.example.dualscreenpos.data.model.TransactionRequest;
+import com.example.dualscreenpos.data.model.TransactionResult;
 import com.example.dualscreenpos.data.network.RetailApi;
-import com.example.dualscreenpos.data.repository.BinRepository;
 import com.example.dualscreenpos.data.repository.ItemRepository;
 import com.example.dualscreenpos.data.repository.SettingsRepository;
 import com.example.dualscreenpos.rfid.ReaderState;
 import com.example.dualscreenpos.rfid.RfidCardReaderManager;
+
+import java.util.ArrayList;
+import java.util.List;
 
 public class MainViewModel extends ViewModel {
 
@@ -24,22 +30,27 @@ public class MainViewModel extends ViewModel {
 
         public static class Idle extends UiState {}
 
-        public static class Scanning extends UiState {}
+        // Scanner active — shows ScanningFragment
+        public static class CartScanning extends UiState {
+            public final List<ReturnRoute> cart;
+            public CartScanning(List<ReturnRoute> cart) { this.cart = cart; }
+        }
 
-        public static class ItemFound extends UiState {
-            public final ReturnRoute route;
-            public ItemFound(ReturnRoute route) { this.route = route; }
-            public String getItemName() { return route.skuDetail != null ? route.skuDetail.productName : ""; }
-            public String getFormattedPrice() {
-                return route.skuDetail != null ? String.format("₹%.2f", route.skuDetail.salePrice) : "";
-            }
+        // Cart has items, scanner idle — shows OperationsFragment
+        public static class CartReady extends UiState {
+            public final List<ReturnRoute> cart;
+            public CartReady(List<ReturnRoute> cart) { this.cart = cart; }
         }
 
         public static class Processing extends UiState {}
 
         public static class Success extends UiState {
             public final String itemName;
-            public Success(String itemName) { this.itemName = itemName; }
+            public final String type; // "CHECKOUT" | "RETURN_TO_STORE" | "RETURN_TO_WAREHOUSE"
+            public Success(String itemName, String type) {
+                this.itemName = itemName;
+                this.type = type != null ? type : "CHECKOUT";
+            }
         }
 
         public static class Error extends UiState {
@@ -61,17 +72,17 @@ public class MainViewModel extends ViewModel {
 
     private final RfidCardReaderManager readerManager;
     private final ItemRepository itemRepo;
-    private final BinRepository binRepo;
     private final SettingsRepository settingsRepo;
 
     private final MutableLiveData<UiState> uiStateLiveData = new MutableLiveData<>(new UiState.Idle());
-    private ReturnRoute currentRoute = null;
+    private final MutableLiveData<List<StorageBin>> binsLiveData = new MutableLiveData<>(new ArrayList<>());
+
+    private final List<ReturnRoute> cart = new ArrayList<>();
     private Observer<ReaderState> pendingScanObserver = null;
 
     public MainViewModel() {
         readerManager = RfidCardReaderManager.getInstance();
         itemRepo = ItemRepository.getInstance();
-        binRepo = BinRepository.getInstance();
         settingsRepo = SettingsRepository.getInstance();
 
         String ip = settingsRepo.getReaderIp();
@@ -83,36 +94,82 @@ public class MainViewModel extends ViewModel {
     // ── LiveData accessors ────────────────────────────────────────────────────
 
     public LiveData<UiState> getUiStateLiveData() { return uiStateLiveData; }
-
     public LiveData<ReaderState> getReaderStateLiveData() { return readerManager.getStateLiveData(); }
+    public LiveData<List<StorageBin>> getBinsLiveData() { return binsLiveData; }
 
     // ── Public actions ────────────────────────────────────────────────────────
 
-    public void postUiState(UiState state) {
-        uiStateLiveData.postValue(state);
+    public void postUiState(UiState state) { uiStateLiveData.postValue(state); }
+
+    public void startCartCheckout() {
+        cart.clear();
+        uiStateLiveData.postValue(new UiState.CartScanning(new ArrayList<>()));
+        if (!settingsRepo.isMockMode()) scanNow();
     }
 
-    public void startScan() {
-        uiStateLiveData.postValue(new UiState.Scanning());
-        // In mock mode the user taps MOCK SCAN on the scanning screen to fire the EPC.
-        // In real mode, kick off the hardware scan immediately.
-        if (!settingsRepo.isMockMode()) {
-            scanNow();
+    public void addMoreScan() {
+        uiStateLiveData.postValue(new UiState.CartScanning(new ArrayList<>(cart)));
+        if (!settingsRepo.isMockMode()) scanNow();
+    }
+
+    public void lookupEpcForCart(String epc) { fetchAndAddToCart(epc); }
+
+    public void resumeCart() {
+        if (!cart.isEmpty()) {
+            uiStateLiveData.postValue(new UiState.CartReady(new ArrayList<>(cart)));
+        } else {
+            uiStateLiveData.postValue(new UiState.Idle());
         }
     }
 
-    /** Called when user picks an EPC from the mock list — skips the reader entirely. */
-    public void lookupEpc(String epc) {
-        fetchItemDetails(epc);
+    // Called by Cancel buttons — wipes cart and returns to idle
+    public void cancelAndClearCart() {
+        cart.clear();
+        uiStateLiveData.postValue(new UiState.Idle());
     }
 
-    /** Fires one EPC read. Call from ScanningFragment's MOCK SCAN button in mock mode,
-     *  or automatically from startScan() in real mode. */
+    public void fetchBinsIfNeeded() {
+        List<StorageBin> current = binsLiveData.getValue();
+        if (current != null && !current.isEmpty()) return;
+        forceFetchBins();
+    }
+
+    public void forceFetchBins() {
+        RetailApi.getInstance(settingsRepo.getBaseUrl())
+                .getAllBins(new RetailApi.ApiCallback<List<StorageBin>>() {
+                    @Override public void onSuccess(List<StorageBin> bins) {
+                        binsLiveData.postValue(bins != null ? bins : new ArrayList<>());
+                    }
+                    @Override public void onFailure(String error) { /* best-effort */ }
+                });
+    }
+
+    public List<String> getAvailableRacks() {
+        List<String> racks = new ArrayList<>();
+        List<StorageBin> bins = binsLiveData.getValue();
+        if (bins == null) return racks;
+        for (StorageBin b : bins) {
+            if (b.rackId != null && !b.rackId.isEmpty() && !racks.contains(b.rackId)) {
+                racks.add(b.rackId);
+            }
+        }
+        return racks;
+    }
+
+    public List<StorageBin> getBinsForRack(String rackId) {
+        List<StorageBin> result = new ArrayList<>();
+        List<StorageBin> bins = binsLiveData.getValue();
+        if (bins == null) return result;
+        for (StorageBin b : bins) {
+            if (rackId != null && rackId.equals(b.rackId)) result.add(b);
+        }
+        return result;
+    }
+
     public void scanNow() {
         removeScanObserver();
         pendingScanObserver = new Observer<ReaderState>() {
             boolean scanStarted = false;
-
             @Override
             public void onChanged(ReaderState state) {
                 if (!scanStarted) {
@@ -121,10 +178,14 @@ public class MainViewModel extends ViewModel {
                 }
                 if (state instanceof ReaderState.TagFound) {
                     removeScanObserver();
-                    fetchItemDetails(((ReaderState.TagFound) state).epc);
+                    fetchAndAddToCart(((ReaderState.TagFound) state).epc);
                 } else if (state instanceof ReaderState.NoTagDetected) {
                     removeScanObserver();
-                    uiStateLiveData.postValue(new UiState.Error("No item detected. Try again."));
+                    if (!cart.isEmpty()) {
+                        uiStateLiveData.postValue(new UiState.CartReady(new ArrayList<>(cart)));
+                    } else {
+                        uiStateLiveData.postValue(new UiState.Error("No item detected. Try again."));
+                    }
                 } else if (state instanceof ReaderState.ReaderError) {
                     removeScanObserver();
                     uiStateLiveData.postValue(new UiState.Error(((ReaderState.ReaderError) state).message));
@@ -135,46 +196,208 @@ public class MainViewModel extends ViewModel {
         readerManager.scanOnce();
     }
 
-    public void confirmCheckout() {
-        if (currentRoute == null || currentRoute.itemRecord == null) return;
+    // ── Checkout ──────────────────────────────────────────────────────────────
+
+    public void confirmCheckoutItems(List<ReturnRoute> items) {
+        if (items.isEmpty()) return;
         uiStateLiveData.postValue(new UiState.Processing());
 
-        final ReturnRoute route = currentRoute;
-        TransactionRequest req = TransactionRequest.forCheckout(
-                route.itemRecord.rfid, route.itemRecord.storageBinRfid);
+        List<CheckoutRequest.CheckoutItemRequest> reqItems = new ArrayList<>();
+        double subtotal = 0, gstTotal = 0;
+        for (ReturnRoute r : items) {
+            if (r.itemRecord == null || r.skuDetail == null) continue;
+            double gstAmt  = r.skuDetail.salePrice * r.skuDetail.gstPercent / 100.0;
+            double lineTot = r.skuDetail.salePrice + gstAmt;
+            CheckoutRequest.CheckoutItemRequest it = new CheckoutRequest.CheckoutItemRequest();
+            it.rfid       = r.itemRecord.rfid;
+            it.skuId      = r.skuDetail.id;
+            it.unitPrice  = r.skuDetail.salePrice;
+            it.gstPercent = r.skuDetail.gstPercent;
+            it.lineTotal  = lineTot;
+            reqItems.add(it);
+            subtotal += r.skuDetail.salePrice;
+            gstTotal += gstAmt;
+        }
+        CheckoutRequest req = new CheckoutRequest();
+        req.items      = reqItems;
+        req.subtotal   = subtotal;
+        req.gstTotal   = gstTotal;
+        req.grandTotal = subtotal + gstTotal;
+        req.paymentMode = "MOCK";
+
+        int count = items.size();
+        final String label = count + " item" + (count > 1 ? "s" : "") + " checked out";
 
         RetailApi.getInstance(settingsRepo.getBaseUrl())
-                .submitTransaction(req, new RetailApi.ApiCallback<com.example.dualscreenpos.data.model.TransactionResult>() {
-                    @Override
-                    public void onSuccess(com.example.dualscreenpos.data.model.TransactionResult result) {
-                        String itemName = route.skuDetail != null ? route.skuDetail.productName : "";
-                        uiStateLiveData.postValue(new UiState.Success(itemName));
+                .submitCheckout(req, new RetailApi.ApiCallback<CheckoutResponse>() {
+                    @Override public void onSuccess(CheckoutResponse result) {
+                        cart.clear();
+                        uiStateLiveData.postValue(new UiState.Success(label, "CHECKOUT"));
                     }
-                    @Override
-                    public void onFailure(String error) {
+                    @Override public void onFailure(String error) {
                         uiStateLiveData.postValue(new UiState.Error(error));
                     }
                 });
     }
 
+    // ── Return to Store ───────────────────────────────────────────────────────
+
+    public void confirmReturnToStore(List<ReturnRoute> items, String reason) {
+        if (items.isEmpty()) return;
+        uiStateLiveData.postValue(new UiState.Processing());
+        List<String> rfids = epcsOf(items);
+
+        BulkUploadRequest uploadReq = new BulkUploadRequest();
+        uploadReq.rfids = rfids;
+        uploadReq.track = "RETURN_TO_STORE";
+
+        int count = items.size();
+        final String label = count + " item" + (count > 1 ? "s" : "") + " returned to store";
+
+        RetailApi api = RetailApi.getInstance(settingsRepo.getBaseUrl());
+        api.bulkUploadItems(uploadReq, new RetailApi.ApiCallback<TransactionResult>() {
+            @Override public void onSuccess(TransactionResult r) {
+                api.submitTransaction(
+                        TransactionRequest.forReturn(rfids, "", "RETURN_TO_STORE", reason),
+                        new RetailApi.ApiCallback<TransactionResult>() {
+                            @Override public void onSuccess(TransactionResult r2) {
+                                cart.clear();
+                                uiStateLiveData.postValue(new UiState.Success(label, "RETURN_TO_STORE"));
+                            }
+                            @Override public void onFailure(String err) {
+                                uiStateLiveData.postValue(new UiState.Error(err));
+                            }
+                        });
+            }
+            @Override public void onFailure(String err) {
+                uiStateLiveData.postValue(new UiState.Error(err));
+            }
+        });
+    }
+
+    // ── Return to Warehouse ───────────────────────────────────────────────────
+
+    public void confirmReturnToWarehouse(List<ReturnRoute> items, String reason,
+                                         String binRfid, String rackId) {
+        if (items.isEmpty()) return;
+        uiStateLiveData.postValue(new UiState.Processing());
+        List<String> rfids = epcsOf(items);
+
+        int count = items.size();
+        final String label = count + " item" + (count > 1 ? "s" : "") + " returned to warehouse";
+
+        RetailApi api = RetailApi.getInstance(settingsRepo.getBaseUrl());
+
+        // Split items by current status — SOLD needs an extra RETURN_TO_STORE step first
+        List<String> soldRfids    = rfidsWithStatus(items, "SOLD");
+        List<String> inStoreRfids = rfidsWithStatus(items, "IN_STORE");
+        inStoreRfids.addAll(rfidsWithStatus(items, "DISPATCHED"));
+
+        // After SOLD items are processed, process IN_STORE items then post success
+        Runnable processInStore = () -> {
+            if (inStoreRfids.isEmpty()) {
+                cart.clear();
+                binsLiveData.postValue(new ArrayList<>()); // invalidate cache
+                uiStateLiveData.postValue(new UiState.Success(label, "RETURN_TO_WAREHOUSE"));
+                return;
+            }
+            BulkUploadRequest inStoreUpload = new BulkUploadRequest();
+            inStoreUpload.rfids = inStoreRfids;
+            inStoreUpload.rackId = rackId != null ? rackId : "";
+            inStoreUpload.storageBinRfid = binRfid != null ? binRfid : "";
+            inStoreUpload.track = "STORE_TO_WAREHOUSE";
+            api.bulkUploadItems(inStoreUpload, new RetailApi.ApiCallback<TransactionResult>() {
+                @Override public void onSuccess(TransactionResult r) {
+                    api.submitTransaction(
+                            TransactionRequest.forReturn(inStoreRfids, binRfid, "STORE_TO_WAREHOUSE", reason),
+                            new RetailApi.ApiCallback<TransactionResult>() {
+                                @Override public void onSuccess(TransactionResult r2) {
+                                    cart.clear();
+                                    binsLiveData.postValue(new ArrayList<>()); // invalidate cache
+                                    uiStateLiveData.postValue(new UiState.Success(label, "RETURN_TO_WAREHOUSE"));
+                                }
+                                @Override public void onFailure(String err) {
+                                    cart.clear();
+                                    binsLiveData.postValue(new ArrayList<>()); // invalidate cache
+                                    uiStateLiveData.postValue(new UiState.Success(label, "RETURN_TO_WAREHOUSE"));
+                                }
+                            });
+                }
+                @Override public void onFailure(String err) {
+                    uiStateLiveData.postValue(new UiState.Error(err));
+                }
+            });
+        };
+
+        if (soldRfids.isEmpty()) {
+            // No SOLD items — go straight to STORE_TO_WAREHOUSE for IN_STORE items
+            processInStore.run();
+            return;
+        }
+
+        // 4-step flow for SOLD items: SOLD→IN_STORE, then IN_STORE→IN_WAREHOUSE
+        BulkUploadRequest step1 = new BulkUploadRequest();
+        step1.rfids = soldRfids;
+        step1.track = "RETURN_TO_STORE";
+        api.bulkUploadItems(step1, new RetailApi.ApiCallback<TransactionResult>() {
+            @Override public void onSuccess(TransactionResult r) {
+                api.submitTransaction(
+                        TransactionRequest.forReturn(soldRfids, "", "RETURN_TO_STORE", reason),
+                        new RetailApi.ApiCallback<TransactionResult>() {
+                            @Override public void onSuccess(TransactionResult r2) {
+                                BulkUploadRequest step3 = new BulkUploadRequest();
+                                step3.rfids = soldRfids;
+                                step3.rackId = rackId != null ? rackId : "";
+                                step3.storageBinRfid = binRfid != null ? binRfid : "";
+                                step3.track = "STORE_TO_WAREHOUSE";
+                                api.bulkUploadItems(step3, new RetailApi.ApiCallback<TransactionResult>() {
+                                    @Override public void onSuccess(TransactionResult r3) {
+                                        api.submitTransaction(
+                                                TransactionRequest.forReturn(soldRfids, binRfid, "STORE_TO_WAREHOUSE", reason),
+                                                new RetailApi.ApiCallback<TransactionResult>() {
+                                                    @Override public void onSuccess(TransactionResult r4) {
+                                                        processInStore.run();
+                                                    }
+                                                    @Override public void onFailure(String err) {
+                                                        processInStore.run(); // log-only failure, continue
+                                                    }
+                                                });
+                                    }
+                                    @Override public void onFailure(String err) {
+                                        uiStateLiveData.postValue(new UiState.Error(err));
+                                    }
+                                });
+                            }
+                            @Override public void onFailure(String err) {
+                                uiStateLiveData.postValue(new UiState.Error(err));
+                            }
+                        });
+            }
+            @Override public void onFailure(String err) {
+                uiStateLiveData.postValue(new UiState.Error(err));
+            }
+        });
+    }
+
     // ── Private helpers ───────────────────────────────────────────────────────
 
-    private void fetchItemDetails(String epc) {
+    private void fetchAndAddToCart(String epc) {
+        // Duplicate check
+        for (ReturnRoute r : cart) {
+            if (r.itemRecord != null && r.itemRecord.rfid.equals(epc)) {
+                uiStateLiveData.postValue(new UiState.CartReady(new ArrayList<>(cart)));
+                return;
+            }
+        }
         itemRepo.fetchItemAndSku(epc, new RetailApi.ApiCallback<ReturnRoute>() {
             @Override
             public void onSuccess(ReturnRoute route) {
                 if ("BLOCKED".equals(route.returnType)) {
-                    if ("ALREADY_SOLD".equals(route.blockReason)) {
-                        uiStateLiveData.postValue(new UiState.BlockedItem(
-                                "Item Already Sold",
-                                "This item has already been checked out and marked as sold."));
-                    } else {
-                        uiStateLiveData.postValue(new UiState.BlockedItem(
-                                "Not Available", route.blockReason));
-                    }
+                    uiStateLiveData.postValue(new UiState.BlockedItem(
+                            "Item Not Available", route.blockReason));
                 } else {
-                    currentRoute = route;
-                    uiStateLiveData.postValue(new UiState.ItemFound(route));
+                    cart.add(route);
+                    uiStateLiveData.postValue(new UiState.CartReady(new ArrayList<>(cart)));
                 }
             }
             @Override
@@ -188,6 +411,21 @@ public class MainViewModel extends ViewModel {
                 }
             }
         });
+    }
+
+    private List<String> rfidsWithStatus(List<ReturnRoute> items, String status) {
+        List<String> result = new ArrayList<>();
+        for (ReturnRoute r : items) {
+            if (r.itemRecord != null && status.equals(r.itemRecord.status))
+                result.add(r.itemRecord.rfid);
+        }
+        return result;
+    }
+
+    private List<String> epcsOf(List<ReturnRoute> items) {
+        List<String> rfids = new ArrayList<>();
+        for (ReturnRoute r : items) if (r.itemRecord != null) rfids.add(r.itemRecord.rfid);
+        return rfids;
     }
 
     private void removeScanObserver() {

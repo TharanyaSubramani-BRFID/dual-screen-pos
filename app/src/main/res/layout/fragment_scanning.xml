@@ -48,14 +48,10 @@
 
     <Button
         android:id="@+id/btn_mock_scan"
-        android:layout_width="220dp"
-        android:layout_height="56dp"
-        android:layout_marginTop="40dp"
-        android:backgroundTint="#FF9800"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="24dp"
         android:text="MOCK SCAN"
-        android:textColor="#FFFFFF"
-        android:textSize="20sp"
-        android:textStyle="bold"
         android:visibility="gone"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"

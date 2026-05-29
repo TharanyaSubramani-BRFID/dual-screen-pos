@@ -95,7 +95,8 @@ public class ItemFoundFragment extends Fragment {
                     .setMessage("Product: " + productName
                             + "\nTotal: " + totalStr
                             + "\n\nProceed with checkout?")
-                    .setPositiveButton("Confirm", (d, w) -> viewModel.confirmCheckout())
+                    .setPositiveButton("Confirm", (d, w) -> viewModel.confirmCheckoutItems(
+                            java.util.Collections.singletonList(route)))
                     .setNegativeButton("Cancel", null)
                     .setCancelable(true)
                     .show();
@@ -104,12 +105,22 @@ public class ItemFoundFragment extends Fragment {
     }
 
     private void applyStatusColor(TextView tv, String status) {
-        int color;
+        int bgColor, textColor;
         switch (status) {
-            case "IN_STORE":    color = Color.parseColor("#1B4332"); break;
-            case "DISPATCHED":  color = Color.parseColor("#003566"); break;
-            default:            color = Color.parseColor("#3A3A3A"); break;
+            case "IN_STORE":
+                bgColor   = Color.parseColor("#C8E6C9");
+                textColor = Color.parseColor("#1B5E20");
+                break;
+            case "DISPATCHED":
+                bgColor   = Color.parseColor("#BBDEFB");
+                textColor = Color.parseColor("#0D47A1");
+                break;
+            default:
+                bgColor   = Color.parseColor("#F5F5F5");
+                textColor = Color.parseColor("#424242");
+                break;
         }
-        tv.setBackgroundColor(color);
+        tv.setBackgroundColor(bgColor);
+        tv.setTextColor(textColor);
     }
 }

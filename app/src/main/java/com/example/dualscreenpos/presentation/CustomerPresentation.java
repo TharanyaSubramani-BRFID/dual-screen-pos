@@ -36,7 +36,7 @@ public class CustomerPresentation extends Presentation {
     }
 
     public void showIdle() {
-        layoutRoot.setBackgroundColor(Color.parseColor("#0D0D1A"));
+        layoutRoot.setBackgroundColor(Color.parseColor("#FFFFFF"));
         tvStatus.setTextSize(44f);
         tvStatus.setText("Welcome");
         tvItemName.setVisibility(View.GONE);
@@ -64,23 +64,37 @@ public class CustomerPresentation extends Presentation {
 
     public void showProcessing() {
         tvStatus.setTextSize(44f);
-        tvStatus.setText("Processing checkout...");
+        tvStatus.setText("Processing your order…");
         tvItemName.setVisibility(View.GONE);
         tvPrice.setVisibility(View.GONE);
-        tvBottomLabel.setText("");
+        tvBottomLabel.setText("Please wait");
     }
 
-    public void showSuccess(String itemName) {
-        layoutRoot.setBackgroundColor(Color.parseColor("#1B4332"));
-        tvStatus.setText("Checkout Accepted");
+    public void showSuccess(String itemName, String type) {
+        String title, bg;
+        switch (type != null ? type : "CHECKOUT") {
+            case "RETURN_TO_STORE":
+                title = "Returned to Store";
+                bg    = "#E3F2FD";
+                break;
+            case "RETURN_TO_WAREHOUSE":
+                title = "Returned to Warehouse";
+                bg    = "#FFF8E1";
+                break;
+            default:
+                title = "Checkout Successful!";
+                bg    = "#E8F5E9";
+                break;
+        }
+        layoutRoot.setBackgroundColor(Color.parseColor(bg));
+        tvStatus.setText(title);
         tvItemName.setVisibility(View.VISIBLE);
         tvItemName.setText(itemName);
         tvPrice.setVisibility(View.GONE);
         tvBottomLabel.setText("Thank you");
 
-        new Handler(Looper.getMainLooper()).postDelayed(() -> {
-            layoutRoot.setBackgroundColor(Color.parseColor("#0D0D1A"));
-        }, 4000);
+        new Handler(Looper.getMainLooper()).postDelayed(() ->
+                layoutRoot.setBackgroundColor(Color.parseColor("#FFFFFF")), 4000);
     }
 
     public void showError(String reason) {

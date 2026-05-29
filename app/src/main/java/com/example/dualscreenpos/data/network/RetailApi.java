@@ -3,6 +3,9 @@ package com.example.dualscreenpos.data.network;
 import android.os.Handler;
 import android.os.Looper;
 
+import com.example.dualscreenpos.data.model.BulkUploadRequest;
+import com.example.dualscreenpos.data.model.CheckoutRequest;
+import com.example.dualscreenpos.data.model.CheckoutResponse;
 import com.example.dualscreenpos.data.model.ItemRecord;
 import com.example.dualscreenpos.data.model.SkuDetail;
 import com.example.dualscreenpos.data.model.StorageBin;
@@ -191,6 +194,59 @@ public class RetailApi {
                     return;
                 }
                 deliver(() -> cb.onSuccess(new TransactionResult(true, "Success")));
+            }
+        });
+    }
+
+    public void bulkUploadItems(BulkUploadRequest req, ApiCallback<TransactionResult> cb) {
+        String json = GSON.toJson(req);
+        RequestBody body = RequestBody.create(json, JSON);
+        Request request = new Request.Builder()
+                .url(baseUrl + "/api/v1/items/bulk_upload")
+                .post(body)
+                .build();
+        client.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                deliver(() -> cb.onFailure("Network error: " + e.getMessage()));
+            }
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                String responseBody = response.body() != null ? response.body().string() : "";
+                if (!response.isSuccessful()) {
+                    deliver(() -> cb.onFailure(parseErrorMessage(responseBody)));
+                    return;
+                }
+                deliver(() -> cb.onSuccess(new TransactionResult(true, "OK")));
+            }
+        });
+    }
+
+    public void submitCheckout(CheckoutRequest req, ApiCallback<CheckoutResponse> cb) {
+        String json = GSON.toJson(req);
+        RequestBody body = RequestBody.create(json, JSON);
+        Request request = new Request.Builder()
+                .url(baseUrl + "/api/v1/checkouts/add")
+                .post(body)
+                .build();
+        client.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                deliver(() -> cb.onFailure("Network error: " + e.getMessage()));
+            }
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                String responseBody = response.body() != null ? response.body().string() : "";
+                if (!response.isSuccessful()) {
+                    deliver(() -> cb.onFailure("Checkout failed: " + parseErrorMessage(responseBody)));
+                    return;
+                }
+                try {
+                    CheckoutResponse result = GSON.fromJson(responseBody, CheckoutResponse.class);
+                    deliver(() -> cb.onSuccess(result));
+                } catch (Exception e) {
+                    deliver(() -> cb.onFailure("Parse error: " + e.getMessage()));
+                }
             }
         });
     }

@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="120dp"
+    android:height="120dp"
+    android:viewportWidth="64"
+    android:viewportHeight="64">
+
+    <!-- Store roof / awning -->
+    <path
+        android:fillColor="#1565C0"
+        android:pathData="M8,28L32,10L56,28H8z"/>
+
+    <!-- Store body -->
+    <path
+        android:fillColor="#BBDEFB"
+        android:pathData="M14,28v24h36V28H14z"/>
+
+    <!-- Door -->
+    <path
+        android:fillColor="#1565C0"
+        android:pathData="M26,36h12v16H26z"/>
+
+    <!-- Left window -->
+    <path
+        android:fillColor="#1565C0"
+        android:pathData="M16,32h10v8H16z"/>
+
+    <!-- Right window -->
+    <path
+        android:fillColor="#1565C0"
+        android:pathData="M38,32h10v8H38z"/>
+
+    <!-- Return arrow (curved) -->
+    <path
+        android:fillColor="#FF6F00"
+        android:strokeColor="#FF6F00"
+        android:strokeWidth="2"
+        android:fillAlpha="255"
+        android:pathData="M8,8C8,8 4,12 4,16C4,20 8,22 12,20"/>
+
+    <!-- Arrow head pointing into store -->
+    <path
+        android:fillColor="#FF6F00"
+        android:pathData="M6,18l6,-6l-2,6l2,6z"/>
+
+    <!-- Sparkle top right -->
+    <path
+        android:fillColor="#FDD835"
+        android:pathData="M52,6l1,-2.5l1,2.5l2.5,1l-2.5,1l-1,2.5l-1,-2.5l-2.5,-1z"/>
+
+    <!-- Sparkle bottom left -->
+    <path
+        android:fillColor="#FDD835"
+        android:pathData="M10,54l0.8,-2l0.8,2l2,0.8l-2,0.8l-0.8,2l-0.8,-2l-2,-0.8z"/>
+
+</vector>

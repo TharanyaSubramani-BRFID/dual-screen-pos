@@ -61,8 +61,8 @@ public class ItemRepository {
                 route.requiresBin = false;
                 break;
             case "SOLD":
-                route.returnType = "BLOCKED";
-                route.blockReason = "ALREADY_SOLD";
+                route.returnType = "RETURN";
+                route.requiresBin = false;
                 break;
             case "IN_WAREHOUSE":
                 route.returnType = "BLOCKED";

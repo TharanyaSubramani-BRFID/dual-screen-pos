@@ -22,7 +22,7 @@
             android:name=".ui.main.MainActivity"
             android:exported="true"
             android:screenOrientation="landscape"
-            android:launchMode="singleTask"
+            android:taskAffinity=""
             android:windowSoftInputMode="stateHidden">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />

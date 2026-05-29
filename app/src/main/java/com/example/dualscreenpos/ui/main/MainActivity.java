@@ -64,26 +64,33 @@ public class MainActivity extends AppCompatActivity {
             showFragment(new IdleFragment());
             if (customerPresentation != null) customerPresentation.showIdle();
 
-        } else if (state instanceof MainViewModel.UiState.Scanning) {
+        } else if (state instanceof MainViewModel.UiState.CartScanning) {
             showFragment(new ScanningFragment());
             if (customerPresentation != null) customerPresentation.showScanning();
 
-        } else if (state instanceof MainViewModel.UiState.ItemFound) {
-            MainViewModel.UiState.ItemFound s = (MainViewModel.UiState.ItemFound) state;
-            android.os.Bundle bundle = new android.os.Bundle();
-            bundle.putString("route_json", new com.google.gson.Gson().toJson(s.route));
-            showFragment(ItemFoundFragment.newInstance(bundle));
-            if (customerPresentation != null)
-                customerPresentation.showItemFound(s.getItemName(), s.getFormattedPrice());
+        } else if (state instanceof MainViewModel.UiState.CartReady) {
+            MainViewModel.UiState.CartReady s = (MainViewModel.UiState.CartReady) state;
+            if (!(getSupportFragmentManager().findFragmentById(R.id.fragment_container) instanceof OperationsFragment)) {
+                showFragment(new OperationsFragment());
+            }
+            if (customerPresentation != null) {
+                double total = 0;
+                for (com.example.dualscreenpos.data.model.ReturnRoute r : s.cart) {
+                    if (r.skuDetail != null)
+                        total += r.skuDetail.salePrice * (1 + r.skuDetail.gstPercent / 100.0);
+                }
+                String totalStr = total > 0 ? String.format("₹%.2f", total) : "";
+                customerPresentation.showItemFound(s.cart.size() + " item(s)", totalStr);
+            }
 
         } else if (state instanceof MainViewModel.UiState.Processing) {
             showFragment(new ProcessingFragment());
             if (customerPresentation != null) customerPresentation.showProcessing();
 
         } else if (state instanceof MainViewModel.UiState.Success) {
-            String name = ((MainViewModel.UiState.Success) state).itemName;
-            showFragment(SuccessFragment.newInstance(name));
-            if (customerPresentation != null) customerPresentation.showSuccess(name);
+            MainViewModel.UiState.Success s = (MainViewModel.UiState.Success) state;
+            showFragment(SuccessFragment.newInstance(s.itemName, s.type));
+            if (customerPresentation != null) customerPresentation.showSuccess(s.itemName, s.type);
 
         } else if (state instanceof MainViewModel.UiState.Error) {
             String msg = ((MainViewModel.UiState.Error) state).message;
@@ -92,11 +99,10 @@ public class MainActivity extends AppCompatActivity {
 
         } else if (state instanceof MainViewModel.UiState.BlockedItem) {
             MainViewModel.UiState.BlockedItem s = (MainViewModel.UiState.BlockedItem) state;
-            showFragment(new IdleFragment());
             new android.app.AlertDialog.Builder(this)
                     .setTitle(s.title)
                     .setMessage(s.message)
-                    .setPositiveButton("OK", (d, w) -> {})
+                    .setPositiveButton("OK", (d, w) -> viewModel.resumeCart())
                     .setCancelable(false)
                     .show();
         }
@@ -110,7 +116,13 @@ public class MainActivity extends AppCompatActivity {
 
     private void initCustomerPresentation() {
         DisplayManager dm = (DisplayManager) getSystemService(DISPLAY_SERVICE);
+        // Prefer displays flagged as presentation screens; fall back to any secondary display
+        // (some dual-screen POS hardware exposes the second screen as a plain secondary display)
         Display[] displays = dm.getDisplays(DisplayManager.DISPLAY_CATEGORY_PRESENTATION);
+        if (displays.length == 0) {
+            Display[] all = dm.getDisplays();
+            if (all.length > 1) displays = new Display[]{all[1]};
+        }
         if (displays.length > 0) {
             customerPresentation = new CustomerPresentation(this, displays[0]);
             customerPresentation.show();
@@ -125,10 +137,6 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void updateStatusBar(ReaderState state) {
-        if (SettingsRepository.getInstance().isMockMode()) {
-            setDot(Color.parseColor("#FF9800"), "MOCK MODE");
-            return;
-        }
         if (state == null) {
             setDot(Color.GRAY, "Not connected");
         } else if (state instanceof ReaderState.ReaderError) {

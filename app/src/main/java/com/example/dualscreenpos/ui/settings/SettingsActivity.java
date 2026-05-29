@@ -94,22 +94,6 @@ public class SettingsActivity extends AppCompatActivity {
                 return true;
             });
 
-            Preference reloadBinsPref = new Preference(ctx);
-            reloadBinsPref.setTitle("Reload Bins");
-            reloadBinsPref.setOnPreferenceClickListener(pref -> {
-                BinRepository.getInstance().loadBins(new RetailApi.ApiCallback<List<StorageBin>>() {
-                    @Override
-                    public void onSuccess(List<StorageBin> result) {
-                        Toast.makeText(ctx, "Loaded " + result.size() + " bins", Toast.LENGTH_SHORT).show();
-                    }
-                    @Override
-                    public void onFailure(String err) {
-                        Toast.makeText(ctx, "Failed to load bins: " + err, Toast.LENGTH_LONG).show();
-                    }
-                });
-                return true;
-            });
-
             Preference testScanPref = new Preference(ctx);
             testScanPref.setTitle("Test Scan");
             testScanPref.setOnPreferenceClickListener(pref -> {
@@ -132,45 +116,23 @@ public class SettingsActivity extends AppCompatActivity {
                 return true;
             });
 
-            // ── Mock Mode section ─────────────────────────────────────────────
-            PreferenceCategory mockCategory = new PreferenceCategory(ctx);
-            mockCategory.setTitle("Mock Mode (No Hardware)");
-
             SwitchPreferenceCompat mockModePref = new SwitchPreferenceCompat(ctx);
             mockModePref.setKey("mock_mode");
-            mockModePref.setTitle("Enable Mock Mode");
-            mockModePref.setSummary("Cycles through 20 hardcoded EPCs without a real reader");
+            mockModePref.setTitle("Mock Mode");
+            mockModePref.setSummary("Bypass RFID reader and pick EPC from a list");
             mockModePref.setChecked(settings.isMockMode());
             mockModePref.setOnPreferenceChangeListener((pref, newValue) -> {
-                boolean enabled = (Boolean) newValue;
-                settings.setMockMode(enabled);
-                // When enabling mock mode, immediately post Idle so the dot turns green.
-                if (enabled) {
-                    RfidCardReaderManager.getInstance().connect("");
-                }
+                settings.setMockMode((Boolean) newValue);
                 return true;
             });
 
-            Preference resetMockPref = new Preference(ctx);
-            resetMockPref.setTitle("Reset Mock Sequence");
-            int initIdx = RfidCardReaderManager.getInstance().getMockCurrentIndex();
-            int initTotal = RfidCardReaderManager.getInstance().getMockEpcCount();
-            resetMockPref.setSummary("Next scan: EPC #" + (initIdx + 1) + " of " + initTotal);
-            resetMockPref.setOnPreferenceClickListener(pref -> {
-                RfidCardReaderManager.getInstance().resetMockIndex();
-                pref.setSummary("Next scan: EPC #1 of " + RfidCardReaderManager.getInstance().getMockEpcCount());
-                Toast.makeText(ctx, "Mock sequence reset to EPC #1", Toast.LENGTH_SHORT).show();
-                return true;
-            });
-
-            // ── Hardware section ──────────────────────────────────────────────
-            PreferenceCategory hwCategory = new PreferenceCategory(ctx);
-            hwCategory.setTitle("Hardware");
-
+            PreferenceCategory mockCategory = new PreferenceCategory(ctx);
+            mockCategory.setTitle("Testing");
             screen.addPreference(mockCategory);
             mockCategory.addPreference(mockModePref);
-            mockCategory.addPreference(resetMockPref);
 
+            PreferenceCategory hwCategory = new PreferenceCategory(ctx);
+            hwCategory.setTitle("Hardware");
             screen.addPreference(hwCategory);
             hwCategory.addPreference(readerIpPref);
             hwCategory.addPreference(antCountPref);
@@ -181,7 +143,6 @@ public class SettingsActivity extends AppCompatActivity {
             backendCategory.setTitle("Backend");
             screen.addPreference(backendCategory);
             backendCategory.addPreference(baseUrlPref);
-            backendCategory.addPreference(reloadBinsPref);
 
             setPreferenceScreen(screen);
         }
