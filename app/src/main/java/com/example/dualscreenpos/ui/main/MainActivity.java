@@ -1,22 +1,17 @@
 package com.example.dualscreenpos.ui.main;
 
 import android.content.Intent;
-import android.graphics.Color;
 import android.hardware.display.DisplayManager;
 import android.os.Bundle;
 import android.os.PowerManager;
 import android.view.Display;
-import android.view.View;
-import android.widget.TextView;
 
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.fragment.app.Fragment;
 import androidx.lifecycle.ViewModelProvider;
 
 import com.example.dualscreenpos.R;
-import com.example.dualscreenpos.data.repository.SettingsRepository;
 import com.example.dualscreenpos.presentation.CustomerPresentation;
-import com.example.dualscreenpos.rfid.ReaderState;
 import com.example.dualscreenpos.ui.settings.SettingsActivity;
 
 public class MainActivity extends AppCompatActivity {
@@ -24,9 +19,6 @@ public class MainActivity extends AppCompatActivity {
     private MainViewModel viewModel;
     private CustomerPresentation customerPresentation;
     private PowerManager.WakeLock wakeLock;
-
-    private View connectionDot;
-    private TextView tvReaderIp;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -38,19 +30,12 @@ public class MainActivity extends AppCompatActivity {
 
         setContentView(R.layout.activity_main);
 
-        connectionDot = findViewById(R.id.connection_dot);
-        tvReaderIp = findViewById(R.id.tv_reader_ip);
-
         findViewById(R.id.btn_settings).setOnClickListener(v ->
                 startActivity(new Intent(this, SettingsActivity.class)));
 
         initCustomerPresentation();
 
         viewModel = new ViewModelProvider(this).get(MainViewModel.class);
-
-        viewModel.getReaderStateLiveData().observe(this, state -> updateStatusBar(state));
-
-        // Also refresh the status bar when returning from Settings (mock mode may have changed).
 
         viewModel.getUiStateLiveData().observe(this, this::handleUiState);
 
@@ -127,28 +112,6 @@ public class MainActivity extends AppCompatActivity {
             customerPresentation = new CustomerPresentation(this, displays[0]);
             customerPresentation.show();
         }
-    }
-
-    @Override
-    protected void onResume() {
-        super.onResume();
-        // Refresh after returning from Settings in case mock mode was toggled.
-        updateStatusBar(viewModel != null ? viewModel.getReaderStateLiveData().getValue() : null);
-    }
-
-    private void updateStatusBar(ReaderState state) {
-        if (state == null) {
-            setDot(Color.GRAY, "Not connected");
-        } else if (state instanceof ReaderState.ReaderError) {
-            setDot(Color.parseColor("#F44336"), "Error");
-        } else {
-            setDot(Color.parseColor("#4CAF50"), SettingsRepository.getInstance().getReaderIp());
-        }
-    }
-
-    private void setDot(int color, String label) {
-        connectionDot.getBackground().setTint(color);
-        tvReaderIp.setText(label);
     }
 
     public MainViewModel getViewModel() {

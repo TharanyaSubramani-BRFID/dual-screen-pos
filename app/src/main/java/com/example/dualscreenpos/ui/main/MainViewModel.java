@@ -122,6 +122,18 @@ public class MainViewModel extends ViewModel {
         }
     }
 
+    // Remove the most-recently-added item with this SKU id from the cart
+    public void removeOneCartItemBySku(int skuId) {
+        for (int i = cart.size() - 1; i >= 0; i--) {
+            ReturnRoute r = cart.get(i);
+            if (r.skuDetail != null && r.skuDetail.id == skuId) {
+                cart.remove(i);
+                uiStateLiveData.postValue(new UiState.CartReady(new ArrayList<>(cart)));
+                return;
+            }
+        }
+    }
+
     // Called by Cancel buttons — wipes cart and returns to idle
     public void cancelAndClearCart() {
         cart.clear();
@@ -281,44 +293,40 @@ public class MainViewModel extends ViewModel {
                                          String binRfid, String rackId) {
         if (items.isEmpty()) return;
         uiStateLiveData.postValue(new UiState.Processing());
-        List<String> rfids = epcsOf(items);
+
+        List<String> allRfids  = epcsOf(items);
+        List<String> soldRfids = new ArrayList<>();
+        for (ReturnRoute r : items) {
+            if (r.itemRecord != null && "SOLD".equals(r.itemRecord.status))
+                soldRfids.add(r.itemRecord.rfid);
+        }
 
         int count = items.size();
         final String label = count + " item" + (count > 1 ? "s" : "") + " returned to warehouse";
-
         RetailApi api = RetailApi.getInstance(settingsRepo.getBaseUrl());
 
-        // Split items by current status — SOLD needs an extra RETURN_TO_STORE step first
-        List<String> soldRfids    = rfidsWithStatus(items, "SOLD");
-        List<String> inStoreRfids = rfidsWithStatus(items, "IN_STORE");
-        inStoreRfids.addAll(rfidsWithStatus(items, "DISPATCHED"));
+        // Final step: one STORE_TO_WAREHOUSE bulk_upload + one transaction for ALL tags
+        Runnable moveAllToWarehouse = () -> {
+            BulkUploadRequest req = new BulkUploadRequest();
+            req.rfids = allRfids;
+            req.rackId = rackId != null ? rackId : "";
+            req.storageBinRfid = binRfid != null ? binRfid : "";
+            req.track = "STORE_TO_WAREHOUSE";
 
-        // After SOLD items are processed, process IN_STORE items then post success
-        Runnable processInStore = () -> {
-            if (inStoreRfids.isEmpty()) {
-                cart.clear();
-                binsLiveData.postValue(new ArrayList<>()); // invalidate cache
-                uiStateLiveData.postValue(new UiState.Success(label, "RETURN_TO_WAREHOUSE"));
-                return;
-            }
-            BulkUploadRequest inStoreUpload = new BulkUploadRequest();
-            inStoreUpload.rfids = inStoreRfids;
-            inStoreUpload.rackId = rackId != null ? rackId : "";
-            inStoreUpload.storageBinRfid = binRfid != null ? binRfid : "";
-            inStoreUpload.track = "STORE_TO_WAREHOUSE";
-            api.bulkUploadItems(inStoreUpload, new RetailApi.ApiCallback<TransactionResult>() {
+            api.bulkUploadItems(req, new RetailApi.ApiCallback<TransactionResult>() {
                 @Override public void onSuccess(TransactionResult r) {
+                    // Single transaction record with ALL tags → one entry in history
                     api.submitTransaction(
-                            TransactionRequest.forReturn(inStoreRfids, binRfid, "STORE_TO_WAREHOUSE", reason),
+                            TransactionRequest.forReturn(allRfids, binRfid, "STORE_TO_WAREHOUSE", reason),
                             new RetailApi.ApiCallback<TransactionResult>() {
                                 @Override public void onSuccess(TransactionResult r2) {
                                     cart.clear();
-                                    binsLiveData.postValue(new ArrayList<>()); // invalidate cache
+                                    binsLiveData.postValue(new ArrayList<>());
                                     uiStateLiveData.postValue(new UiState.Success(label, "RETURN_TO_WAREHOUSE"));
                                 }
                                 @Override public void onFailure(String err) {
                                     cart.clear();
-                                    binsLiveData.postValue(new ArrayList<>()); // invalidate cache
+                                    binsLiveData.postValue(new ArrayList<>());
                                     uiStateLiveData.postValue(new UiState.Success(label, "RETURN_TO_WAREHOUSE"));
                                 }
                             });
@@ -330,48 +338,21 @@ public class MainViewModel extends ViewModel {
         };
 
         if (soldRfids.isEmpty()) {
-            // No SOLD items — go straight to STORE_TO_WAREHOUSE for IN_STORE items
-            processInStore.run();
+            // No SOLD items — go straight to warehouse
+            moveAllToWarehouse.run();
             return;
         }
 
-        // 4-step flow for SOLD items: SOLD→IN_STORE, then IN_STORE→IN_WAREHOUSE
-        BulkUploadRequest step1 = new BulkUploadRequest();
-        step1.rfids = soldRfids;
-        step1.track = "RETURN_TO_STORE";
-        api.bulkUploadItems(step1, new RetailApi.ApiCallback<TransactionResult>() {
+        // SOLD items need RETURN_TO_STORE first (backend rule: SOLD → IN_STORE → IN_WAREHOUSE)
+        // No transaction record here — only the final STORE_TO_WAREHOUSE transaction is created
+        BulkUploadRequest soldToStore = new BulkUploadRequest();
+        soldToStore.rfids = soldRfids;
+        soldToStore.track = "RETURN_TO_STORE";
+
+        api.bulkUploadItems(soldToStore, new RetailApi.ApiCallback<TransactionResult>() {
             @Override public void onSuccess(TransactionResult r) {
-                api.submitTransaction(
-                        TransactionRequest.forReturn(soldRfids, "", "RETURN_TO_STORE", reason),
-                        new RetailApi.ApiCallback<TransactionResult>() {
-                            @Override public void onSuccess(TransactionResult r2) {
-                                BulkUploadRequest step3 = new BulkUploadRequest();
-                                step3.rfids = soldRfids;
-                                step3.rackId = rackId != null ? rackId : "";
-                                step3.storageBinRfid = binRfid != null ? binRfid : "";
-                                step3.track = "STORE_TO_WAREHOUSE";
-                                api.bulkUploadItems(step3, new RetailApi.ApiCallback<TransactionResult>() {
-                                    @Override public void onSuccess(TransactionResult r3) {
-                                        api.submitTransaction(
-                                                TransactionRequest.forReturn(soldRfids, binRfid, "STORE_TO_WAREHOUSE", reason),
-                                                new RetailApi.ApiCallback<TransactionResult>() {
-                                                    @Override public void onSuccess(TransactionResult r4) {
-                                                        processInStore.run();
-                                                    }
-                                                    @Override public void onFailure(String err) {
-                                                        processInStore.run(); // log-only failure, continue
-                                                    }
-                                                });
-                                    }
-                                    @Override public void onFailure(String err) {
-                                        uiStateLiveData.postValue(new UiState.Error(err));
-                                    }
-                                });
-                            }
-                            @Override public void onFailure(String err) {
-                                uiStateLiveData.postValue(new UiState.Error(err));
-                            }
-                        });
+                // Now all items are IN_STORE — move everything to warehouse as one operation
+                moveAllToWarehouse.run();
             }
             @Override public void onFailure(String err) {
                 uiStateLiveData.postValue(new UiState.Error(err));
@@ -411,15 +392,6 @@ public class MainViewModel extends ViewModel {
                 }
             }
         });
-    }
-
-    private List<String> rfidsWithStatus(List<ReturnRoute> items, String status) {
-        List<String> result = new ArrayList<>();
-        for (ReturnRoute r : items) {
-            if (r.itemRecord != null && status.equals(r.itemRecord.status))
-                result.add(r.itemRecord.rfid);
-        }
-        return result;
     }
 
     private List<String> epcsOf(List<ReturnRoute> items) {

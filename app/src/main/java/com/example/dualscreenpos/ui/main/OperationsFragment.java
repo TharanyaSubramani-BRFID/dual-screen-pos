@@ -9,11 +9,23 @@ import android.widget.AdapterView;
 import android.widget.ArrayAdapter;
 import android.widget.Button;
 import android.widget.EditText;
+import android.widget.ImageButton;
 import android.widget.LinearLayout;
 import android.widget.RadioButton;
 import android.widget.RadioGroup;
 import android.widget.Spinner;
+import android.app.Dialog;
+import android.text.Editable;
+import android.text.TextWatcher;
+import android.view.ViewGroup;
+import android.view.Window;
+import android.widget.ScrollView;
 import android.widget.TextView;
+
+import com.google.android.material.textfield.TextInputLayout;
+
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
@@ -36,7 +48,9 @@ public class OperationsFragment extends Fragment {
 
     // Checkout views
     private LinearLayout llCheckoutAlert, llCheckoutItems;
-    private TextView tvCheckoutAlert, tvCheckoutHeader, tvCheckoutGst, tvCheckoutTotal;
+    private TextView tvCheckoutAlert, tvCheckoutHeader, tvCheckoutSubtotal, tvCheckoutGst, tvCheckoutTotal;
+    private ScrollView svCheckoutItems;
+    private View checkoutSummary;
 
     // Return views
     private LinearLayout llReturnAlert, llReturnItems, llWarehouse;
@@ -88,12 +102,15 @@ public class OperationsFragment extends Fragment {
     // ── View binding ──────────────────────────────────────────────────────────
 
     private void bindViews(View view) {
-        llCheckoutAlert  = view.findViewById(R.id.ll_checkout_alert);
-        tvCheckoutAlert  = view.findViewById(R.id.tv_checkout_alert);
-        llCheckoutItems  = view.findViewById(R.id.ll_checkout_items);
-        tvCheckoutHeader = view.findViewById(R.id.tv_checkout_header);
-        tvCheckoutGst    = view.findViewById(R.id.tv_checkout_gst);
-        tvCheckoutTotal  = view.findViewById(R.id.tv_checkout_total);
+        llCheckoutAlert    = view.findViewById(R.id.ll_checkout_alert);
+        tvCheckoutAlert    = view.findViewById(R.id.tv_checkout_alert);
+        llCheckoutItems    = view.findViewById(R.id.ll_checkout_items);
+        tvCheckoutHeader   = view.findViewById(R.id.tv_checkout_header);
+        tvCheckoutSubtotal = view.findViewById(R.id.tv_checkout_subtotal);
+        tvCheckoutGst      = view.findViewById(R.id.tv_checkout_gst);
+        tvCheckoutTotal    = view.findViewById(R.id.tv_checkout_total);
+        svCheckoutItems    = view.findViewById(R.id.sv_checkout_items);
+        checkoutSummary    = view.findViewById(R.id.checkout_summary);
 
         llReturnAlert  = view.findViewById(R.id.ll_return_alert);
         tvReturnAlert  = view.findViewById(R.id.tv_return_alert);
@@ -122,14 +139,15 @@ public class OperationsFragment extends Fragment {
             public void onTabSelected(TabLayout.Tab tab) {
                 activeTab = tab.getPosition();
                 if (activeTab == 0) {
-                    view.findViewById(R.id.scroll_checkout).setVisibility(View.VISIBLE);
+                    view.findViewById(R.id.card_checkout).setVisibility(View.VISIBLE);
+                    checkoutSummary.setVisibility(View.VISIBLE);
                     view.findViewById(R.id.scroll_return).setVisibility(View.GONE);
                     btnAction.setText("CONFIRM CHECKOUT");
                 } else {
-                    view.findViewById(R.id.scroll_checkout).setVisibility(View.GONE);
+                    view.findViewById(R.id.card_checkout).setVisibility(View.GONE);
+                    checkoutSummary.setVisibility(View.GONE);
                     view.findViewById(R.id.scroll_return).setVisibility(View.VISIBLE);
                     btnAction.setText("PROCEED WITH RETURN");
-                    // Always fetch fresh bin data when Return tab is opened
                     viewModel.forceFetchBins();
                 }
             }
@@ -172,10 +190,9 @@ public class OperationsFragment extends Fragment {
         List<ReturnRoute> checkoutItems = filterByType(cart, "CHECKOUT");
         List<ReturnRoute> returnItems   = filterByType(cart, "RETURN");
 
-        // Alert for excluded SOLD items
         if (!returnItems.isEmpty()) {
             llCheckoutAlert.setVisibility(View.VISIBLE);
-            tvCheckoutAlert.setText(returnItems.size() + " already sold item(s) excluded — "
+            tvCheckoutAlert.setText(returnItems.size() + " already sold item(s) excluded;"
                     + "use the Return tab to process them.");
         } else {
             llCheckoutAlert.setVisibility(View.GONE);
@@ -184,19 +201,99 @@ public class OperationsFragment extends Fragment {
         tvCheckoutHeader.setText("Checkout Items (" + checkoutItems.size() + ")");
         llCheckoutItems.removeAllViews();
 
-        double subtotal = 0, gstTotal = 0;
+        // Group by SKU so same product shows ×N with one delete button
+        Map<Integer, List<ReturnRoute>> grouped = new LinkedHashMap<>();
         for (ReturnRoute r : checkoutItems) {
-            if (r.skuDetail == null) continue;
-            double gst  = r.skuDetail.salePrice * r.skuDetail.gstPercent / 100.0;
-            double line = r.skuDetail.salePrice + gst;
-            subtotal  += r.skuDetail.salePrice;
-            gstTotal  += gst;
-            llCheckoutItems.addView(itemRow(r.skuDetail.productName,
-                    String.format("₹%.2f", line)));
+            if (r.skuDetail != null) {
+                grouped.computeIfAbsent(r.skuDetail.id, k -> new ArrayList<>()).add(r);
+            }
         }
 
+        double subtotal = 0, gstTotal = 0;
+        for (Map.Entry<Integer, List<ReturnRoute>> entry : grouped.entrySet()) {
+            List<ReturnRoute> group = entry.getValue();
+            ReturnRoute first = group.get(0);
+            int qty          = group.size();
+            double unitPrice = first.skuDetail.salePrice;
+            double gstPct    = first.skuDetail.gstPercent;
+            double gstUnit   = unitPrice * gstPct / 100.0;
+            double lineTotal = (unitPrice + gstUnit) * qty;
+
+            subtotal += unitPrice * qty;
+            gstTotal += gstUnit * qty;
+
+            llCheckoutItems.addView(checkoutItemRow(
+                    first.skuDetail.productName, qty,
+                    unitPrice, gstPct, lineTotal,
+                    first.skuDetail.id));
+        }
+
+        tvCheckoutSubtotal.setText(String.format("₹%.2f", subtotal));
         tvCheckoutGst.setText(String.format("₹%.2f", gstTotal));
         tvCheckoutTotal.setText(String.format("₹%.2f", subtotal + gstTotal));
+
+        // Auto-scroll to show the most recently added item
+        svCheckoutItems.post(() -> svCheckoutItems.fullScroll(ScrollView.FOCUS_DOWN));
+    }
+
+    private View checkoutItemRow(String name, int qty, double unitPrice,
+                                  double gstPct, double lineTotal, int skuId) {
+        // Outer horizontal row
+        LinearLayout row = new LinearLayout(requireContext());
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(android.view.Gravity.CENTER_VERTICAL);
+        LinearLayout.LayoutParams rp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT);
+        rp.topMargin = dp(8);
+        row.setLayoutParams(rp);
+
+        // Left: product name + unit price label
+        LinearLayout info = new LinearLayout(requireContext());
+        info.setOrientation(LinearLayout.VERTICAL);
+        info.setLayoutParams(new LinearLayout.LayoutParams(0,
+                LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+
+        TextView tvName = new TextView(requireContext());
+        tvName.setText(name + (qty > 1 ? "  ×" + qty : ""));
+        tvName.setTextColor(Color.parseColor("#1A1A2E"));
+        tvName.setTextSize(14f);
+        tvName.setTypeface(null, android.graphics.Typeface.BOLD);
+
+        TextView tvSub = new TextView(requireContext());
+        tvSub.setText(String.format("₹%.2f  (GST %.1f%%)", unitPrice, gstPct));
+        tvSub.setTextColor(Color.parseColor("#757575"));
+        tvSub.setTextSize(12f);
+
+        info.addView(tvName);
+        info.addView(tvSub);
+
+        // Right: line total
+        TextView tvPrice = new TextView(requireContext());
+        LinearLayout.LayoutParams priceLp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT);
+        priceLp.setMarginStart(dp(8));
+        tvPrice.setLayoutParams(priceLp);
+        tvPrice.setText(String.format("₹%.2f", lineTotal));
+        tvPrice.setTextColor(Color.parseColor("#1A1A2E"));
+        tvPrice.setTextSize(14f);
+        tvPrice.setTypeface(null, android.graphics.Typeface.BOLD);
+
+        // Delete button
+        ImageButton btnDelete = new ImageButton(requireContext());
+        LinearLayout.LayoutParams delLp = new LinearLayout.LayoutParams(dp(36), dp(36));
+        delLp.setMarginStart(dp(8));
+        btnDelete.setLayoutParams(delLp);
+        btnDelete.setImageResource(R.drawable.ic_delete);
+        btnDelete.setBackground(null);
+        btnDelete.setContentDescription("Remove one " + name);
+        btnDelete.setOnClickListener(v -> viewModel.removeOneCartItemBySku(skuId));
+
+        row.addView(info);
+        row.addView(tvPrice);
+        row.addView(btnDelete);
+        return row;
     }
 
     private void handleCheckout() {
@@ -211,17 +308,88 @@ public class OperationsFragment extends Fragment {
             return;
         }
 
-        double total = grandTotal(checkoutItems);
-        int count = checkoutItems.size();
-        new AlertDialog.Builder(requireContext())
-                .setTitle("Confirm Payment")
-                .setMessage(count + " item" + (count > 1 ? "s" : "")
-                        + "\nTotal: " + String.format("₹%.2f", total)
-                        + "\n\nProceed with checkout?")
-                .setPositiveButton("Confirm", (d, w) -> viewModel.confirmCheckoutItems(checkoutItems))
-                .setNegativeButton("Cancel", null)
-                .show();
+        showCardPaymentDialog(checkoutItems, grandTotal(checkoutItems));
     }
+
+    private void showCardPaymentDialog(List<ReturnRoute> checkoutItems, double total) {
+        Dialog paymentDialog = new Dialog(requireContext());
+        paymentDialog.requestWindowFeature(Window.FEATURE_NO_TITLE);
+        paymentDialog.setContentView(R.layout.dialog_card_payment);
+        paymentDialog.setCancelable(true);
+
+        TextView tvAmount         = paymentDialog.findViewById(R.id.tv_payment_amount);
+        TextInputLayout tilPin    = paymentDialog.findViewById(R.id.til_pin);
+        android.widget.EditText etCard = paymentDialog.findViewById(R.id.et_card_number);
+        android.widget.EditText etPin  = paymentDialog.findViewById(R.id.et_pin);
+        TextView tvPinHint        = paymentDialog.findViewById(R.id.tv_pin_hint);
+        Button btnCancel          = paymentDialog.findViewById(R.id.btn_payment_cancel);
+        Button btnConfirm         = paymentDialog.findViewById(R.id.btn_payment_confirm);
+
+        tvAmount.setText(String.format("₹%.2f", total));
+
+        // PIN and Confirm start disabled
+        tilPin.setEnabled(false);
+        tilPin.setAlpha(0.45f);
+        btnConfirm.setEnabled(false);
+        btnConfirm.setAlpha(0.5f);
+
+        // Card number: strip spaces → limit 16 digits → reformat XXXX XXXX XXXX XXXX
+        etCard.addTextChangedListener(new TextWatcher() {
+            private boolean formatting = false;
+            @Override public void beforeTextChanged(CharSequence s, int st, int c, int a) {}
+            @Override public void onTextChanged(CharSequence s, int st, int b, int c) {}
+            @Override
+            public void afterTextChanged(Editable s) {
+                if (formatting) return;
+                formatting = true;
+
+                String digits = s.toString().replace(" ", "");
+                if (digits.length() > 16) digits = digits.substring(0, 16);
+
+                StringBuilder formatted = new StringBuilder();
+                for (int i = 0; i < digits.length(); i++) {
+                    if (i > 0 && i % 4 == 0) formatted.append(' ');
+                    formatted.append(digits.charAt(i));
+                }
+                s.replace(0, s.length(), formatted.toString());
+                formatting = false;
+
+                boolean cardComplete = digits.length() == 16;
+                tilPin.setEnabled(cardComplete);
+                tilPin.setAlpha(cardComplete ? 1.0f : 0.45f);
+                tvPinHint.setVisibility(cardComplete ? android.view.View.GONE : android.view.View.VISIBLE);
+                if (!cardComplete) {
+                    etPin.setText("");
+                    btnConfirm.setEnabled(false);
+                    btnConfirm.setAlpha(0.5f);
+                }
+            }
+        });
+
+        etPin.addTextChangedListener(new TextWatcher() {
+            @Override public void beforeTextChanged(CharSequence s, int st, int c, int a) {}
+            @Override public void onTextChanged(CharSequence s, int st, int b, int c) {}
+            @Override
+            public void afterTextChanged(Editable s) {
+                boolean ready = s.length() == 3;
+                btnConfirm.setEnabled(ready);
+                btnConfirm.setAlpha(ready ? 1.0f : 0.5f);
+            }
+        });
+
+        btnCancel.setOnClickListener(v -> paymentDialog.dismiss());
+        btnConfirm.setOnClickListener(v -> {
+            paymentDialog.dismiss();
+            viewModel.confirmCheckoutItems(checkoutItems);
+        });
+
+        paymentDialog.show();
+        if (paymentDialog.getWindow() != null) {
+            int width = (int) (getResources().getDisplayMetrics().widthPixels * 0.50);
+            paymentDialog.getWindow().setLayout(width, ViewGroup.LayoutParams.WRAP_CONTENT);
+        }
+    }
+
 
     // ── Return tab logic ──────────────────────────────────────────────────────
 
@@ -239,7 +407,7 @@ public class OperationsFragment extends Fragment {
         // Alert for excluded items
         if (!warehouseMode && !inStoreItems.isEmpty()) {
             llReturnAlert.setVisibility(View.VISIBLE);
-            tvReturnAlert.setText(inStoreItems.size() + " in-store item(s) not shown — "
+            tvReturnAlert.setText(inStoreItems.size() + " in-store item(s) not shown;"
                     + "switch to \"Return to Warehouse\" to include them.");
         } else {
             llReturnAlert.setVisibility(View.GONE);

@@ -32,7 +32,5 @@ public class IdleFragment extends Fragment {
         // In mock mode: navigates to the scanning screen; user taps MOCK SCAN there.
         view.findViewById(R.id.btn_scan).setOnClickListener(v -> viewModel.startCartCheckout());
 
-        view.findViewById(R.id.btn_settings_idle).setOnClickListener(v ->
-                startActivity(new Intent(requireContext(), SettingsActivity.class)));
     }
 }
