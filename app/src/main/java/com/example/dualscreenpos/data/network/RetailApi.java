@@ -198,6 +198,57 @@ public class RetailApi {
         });
     }
 
+    public void getSkus(ApiCallback<java.util.List<com.example.dualscreenpos.data.model.SkuDetail>> cb) {
+        Request request = new Request.Builder()
+                .url(baseUrl + "/api/v1/skus/get_all")
+                .get().build();
+        client.newCall(request).enqueue(new Callback() {
+            @Override public void onFailure(Call call, IOException e) {
+                deliver(() -> cb.onFailure("Network error: " + e.getMessage()));
+            }
+            @Override public void onResponse(Call call, Response response) throws IOException {
+                String body = response.body() != null ? response.body().string() : "";
+                if (!response.isSuccessful()) {
+                    deliver(() -> cb.onFailure("Server error " + response.code()));
+                    return;
+                }
+                try {
+                    java.lang.reflect.Type t = new TypeToken<java.util.List<
+                        com.example.dualscreenpos.data.model.SkuDetail>>() {}.getType();
+                    java.util.List<com.example.dualscreenpos.data.model.SkuDetail> skus =
+                        GSON.fromJson(body, t);
+                    deliver(() -> cb.onSuccess(skus));
+                } catch (Exception e) {
+                    deliver(() -> cb.onFailure("Parse error: " + e.getMessage()));
+                }
+            }
+        });
+    }
+
+    public void getItemCountForSku(int skuId, ApiCallback<Integer> cb) {
+        Request request = new Request.Builder()
+                .url(baseUrl + "/api/v1/items/?sku_id=" + skuId + "&status=IN_STORE&skip=0&limit=500")
+                .get().build();
+        client.newCall(request).enqueue(new Callback() {
+            @Override public void onFailure(Call call, IOException e) {
+                deliver(() -> cb.onFailure("Network error: " + e.getMessage()));
+            }
+            @Override public void onResponse(Call call, Response response) throws IOException {
+                String body = response.body() != null ? response.body().string() : "";
+                if (!response.isSuccessful()) {
+                    deliver(() -> cb.onSuccess(0));
+                    return;
+                }
+                try {
+                    com.google.gson.JsonArray arr = GSON.fromJson(body, com.google.gson.JsonArray.class);
+                    deliver(() -> cb.onSuccess(arr != null ? arr.size() : 0));
+                } catch (Exception e) {
+                    deliver(() -> cb.onSuccess(0));
+                }
+            }
+        });
+    }
+
     public void bulkUploadItems(BulkUploadRequest req, ApiCallback<TransactionResult> cb) {
         String json = GSON.toJson(req);
         RequestBody body = RequestBody.create(json, JSON);

@@ -31,6 +31,8 @@ public class IdleFragment extends Fragment {
         // In real mode: starts the scan immediately.
         // In mock mode: navigates to the scanning screen; user taps MOCK SCAN there.
         view.findViewById(R.id.btn_scan).setOnClickListener(v -> viewModel.startCartCheckout());
+        view.findViewById(R.id.btn_stock_check).setOnClickListener(v ->
+                viewModel.postUiState(new MainViewModel.UiState.StockCheck()));
 
     }
 }

@@ -58,6 +58,8 @@ public class MainViewModel extends ViewModel {
             public Error(String message) { this.message = message; }
         }
 
+        public static class StockCheck extends UiState {}
+
         public static class BlockedItem extends UiState {
             public final String title;
             public final String message;

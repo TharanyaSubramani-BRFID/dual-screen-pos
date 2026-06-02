@@ -45,7 +45,10 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void handleUiState(MainViewModel.UiState state) {
-        if (state instanceof MainViewModel.UiState.Idle) {
+        if (state instanceof MainViewModel.UiState.StockCheck) {
+            showFragment(new StockCheckFragment());
+
+        } else if (state instanceof MainViewModel.UiState.Idle) {
             showFragment(new IdleFragment());
             if (customerPresentation != null) customerPresentation.showIdle();
 
