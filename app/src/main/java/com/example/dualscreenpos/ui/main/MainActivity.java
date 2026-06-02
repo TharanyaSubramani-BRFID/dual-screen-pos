@@ -2,6 +2,7 @@ package com.example.dualscreenpos.ui.main;
 
 import android.content.Intent;
 import android.hardware.display.DisplayManager;
+import android.hardware.usb.UsbManager;
 import android.os.Bundle;
 import android.os.PowerManager;
 import android.view.Display;
@@ -12,6 +13,9 @@ import androidx.lifecycle.ViewModelProvider;
 
 import com.example.dualscreenpos.R;
 import com.example.dualscreenpos.presentation.CustomerPresentation;
+import com.example.dualscreenpos.printing.PrinterService;
+import com.example.dualscreenpos.rfid.ReaderState;
+import com.example.dualscreenpos.rfid.RfidCardReaderManager;
 import com.example.dualscreenpos.ui.settings.SettingsActivity;
 
 public class MainActivity extends AppCompatActivity {
@@ -19,6 +23,7 @@ public class MainActivity extends AppCompatActivity {
     private MainViewModel viewModel;
     private CustomerPresentation customerPresentation;
     private PowerManager.WakeLock wakeLock;
+    private PrinterService printerService;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -34,10 +39,21 @@ public class MainActivity extends AppCompatActivity {
                 startActivity(new Intent(this, SettingsActivity.class)));
 
         initCustomerPresentation();
+        printerService = new PrinterService(this);
 
         viewModel = new ViewModelProvider(this).get(MainViewModel.class);
 
         viewModel.getUiStateLiveData().observe(this, this::handleUiState);
+
+        // Show RFID diagnostic dialog when connection fails — helps debug hardware issues
+        RfidCardReaderManager.getInstance().getStateLiveData().observe(this, readerState -> {
+            if (readerState instanceof ReaderState.ReaderError) {
+                ReaderState.ReaderError err = (ReaderState.ReaderError) readerState;
+                if (err.diagnostics != null) {
+                    showRfidDiagnostic(err.message, err.diagnostics);
+                }
+            }
+        });
 
         if (savedInstanceState == null) {
             showFragment(new IdleFragment());
@@ -80,6 +96,23 @@ public class MainActivity extends AppCompatActivity {
             showFragment(SuccessFragment.newInstance(s.itemName, s.type));
             if (customerPresentation != null) customerPresentation.showSuccess(s.itemName, s.type);
 
+            // Auto-print receipt on checkout only
+            if ("CHECKOUT".equals(s.type)) {
+                com.example.dualscreenpos.data.model.ReceiptData receipt =
+                        viewModel.getLastReceiptData();
+                if (receipt != null) {
+                    printerService.printReceipt(receipt, new PrinterService.PrintCallback() {
+                        @Override public void onSuccess() {
+                            android.widget.Toast.makeText(MainActivity.this,
+                                    "Receipt printed", android.widget.Toast.LENGTH_SHORT).show();
+                        }
+                        @Override public void onError(String diagnostics) {
+                            showPrintError(diagnostics);
+                        }
+                    });
+                }
+            }
+
         } else if (state instanceof MainViewModel.UiState.Error) {
             String msg = ((MainViewModel.UiState.Error) state).message;
             showFragment(ErrorFragment.newInstance(msg));
@@ -114,6 +147,51 @@ public class MainActivity extends AppCompatActivity {
         if (displays.length > 0) {
             customerPresentation = new CustomerPresentation(this, displays[0]);
             customerPresentation.show();
+        }
+    }
+
+    private void showRfidDiagnostic(String message, String diagnostics) {
+        String fullLog = "Filter Logcat by tag \"BRFID_RFID\" to see this log in real time.\n\n"
+                + diagnostics
+                + "\nWhat to do:\n"
+                + "• Share this log with your ZSF hardware supplier\n"
+                + "• Run 'adb shell lsusb -v' with R9602 connected\n"
+                + "• Check ZSF docs for R9602 Android SDK or serial protocol";
+        new android.app.AlertDialog.Builder(this)
+                .setTitle("R9602 Connection Failed")
+                .setMessage(message + "\n\nTechnical details below:")
+                .setPositiveButton("OK", null)
+                .setNeutralButton("Copy Log", (d, w) -> {
+                    android.content.ClipboardManager cm =
+                            (android.content.ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
+                    cm.setPrimaryClip(android.content.ClipData.newPlainText("rfid_log", fullLog));
+                    android.widget.Toast.makeText(this, "Copied to clipboard",
+                            android.widget.Toast.LENGTH_SHORT).show();
+                })
+                .show();
+    }
+
+    private void showPrintError(String diagnostics) {
+        new android.app.AlertDialog.Builder(this)
+                .setTitle("Printer Not Connected")
+                .setMessage(diagnostics)
+                .setPositiveButton("OK", null)
+                .setNeutralButton("Copy Log", (d, w) -> {
+                    android.content.ClipboardManager cm =
+                            (android.content.ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
+                    cm.setPrimaryClip(android.content.ClipData.newPlainText("printer_log", diagnostics));
+                    android.widget.Toast.makeText(this, "Copied to clipboard",
+                            android.widget.Toast.LENGTH_SHORT).show();
+                })
+                .show();
+    }
+
+    // R9602 plugged in while app is running → reconnect automatically
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        if (UsbManager.ACTION_USB_DEVICE_ATTACHED.equals(intent.getAction())) {
+            RfidCardReaderManager.getInstance().connect();
         }
     }
 

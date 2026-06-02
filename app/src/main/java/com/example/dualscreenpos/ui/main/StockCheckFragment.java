@@ -35,6 +35,8 @@ public class StockCheckFragment extends Fragment {
 
     private List<SkuDetail> allSkus = new ArrayList<>();
     private int[] skuCounts; // parallel array: in-store count per SKU
+    private static final int PAGE_SIZE = 10;
+    private int displayedCount = PAGE_SIZE;
 
     @Nullable
     @Override
@@ -59,7 +61,10 @@ public class StockCheckFragment extends Fragment {
         etSearch.addTextChangedListener(new TextWatcher() {
             @Override public void beforeTextChanged(CharSequence s, int st, int c, int a) {}
             @Override public void onTextChanged(CharSequence s, int st, int b, int c) {}
-            @Override public void afterTextChanged(Editable s) { filterAndRender(s.toString().trim()); }
+            @Override public void afterTextChanged(Editable s) {
+                displayedCount = PAGE_SIZE;
+                filterAndRender(s.toString().trim());
+            }
         });
 
         loadSkusAndCounts();
@@ -138,75 +143,173 @@ public class StockCheckFragment extends Fragment {
             return;
         }
 
-        for (int idx : matches) {
-            llResults.addView(buildSkuRow(idx));
+        llResults.addView(buildHeaderRow());
+
+        int showUpTo = Math.min(displayedCount, matches.size());
+        for (int i = 0; i < showUpTo; i++) {
+            llResults.addView(buildSkuRow(matches.get(i)));
         }
+
+        if (showUpTo < matches.size()) {
+            int remaining = matches.size() - showUpTo;
+            llResults.addView(buildLoadMoreButton(query, remaining));
+        }
+    }
+
+    private View buildLoadMoreButton(String query, int remaining) {
+        android.widget.Button btn = new android.widget.Button(requireContext());
+        btn.setText("Load More");
+        btn.setTextColor(Color.WHITE);
+        btn.setTextSize(13f);
+        btn.setTypeface(null, android.graphics.Typeface.BOLD);
+        btn.setPadding(dp(32), dp(10), dp(32), dp(10));
+
+        android.graphics.drawable.GradientDrawable bg = new android.graphics.drawable.GradientDrawable();
+        bg.setColor(Color.parseColor("#1A1A2E"));
+        bg.setCornerRadius(dp(8));
+        btn.setBackground(bg);
+
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        lp.gravity = android.view.Gravity.CENTER_HORIZONTAL;
+        lp.topMargin = dp(12);
+        lp.bottomMargin = dp(12);
+        btn.setLayoutParams(lp);
+        btn.setOnClickListener(v -> {
+            displayedCount += PAGE_SIZE;
+            filterAndRender(query);
+        });
+        return btn;
+    }
+
+    // Column weights: name gets 3, each data column gets 1.2, badge wraps
+    private static final float W_NAME  = 3f;
+    private static final float W_COL   = 1.2f;
+
+    private View buildHeaderRow() {
+        LinearLayout row = new LinearLayout(requireContext());
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setPadding(dp(16), dp(8), dp(16), dp(8));
+        row.setBackgroundColor(Color.parseColor("#F5F5F5"));
+
+        String[] headers = {"Product Name", "SKU Code", "Category", "MRP", "Sale Price", "GST"};
+        float[]  weights = {W_NAME, W_COL, W_COL, W_COL, W_COL, W_COL};
+
+        for (int i = 0; i < headers.length; i++) {
+            TextView tv = new TextView(requireContext());
+            tv.setText(headers[i]);
+            tv.setTextSize(11f);
+            tv.setTypeface(null, android.graphics.Typeface.BOLD);
+            tv.setTextColor(Color.parseColor("#757575"));
+            tv.setGravity(i == 0 ? android.view.Gravity.START : android.view.Gravity.CENTER);
+            tv.setLayoutParams(new LinearLayout.LayoutParams(0,
+                    LinearLayout.LayoutParams.WRAP_CONTENT, weights[i]));
+            row.addView(tv);
+        }
+
+        // Placeholder to align with badge column
+        TextView tvStock = new TextView(requireContext());
+        tvStock.setText("Stock");
+        tvStock.setTextSize(11f);
+        tvStock.setTypeface(null, android.graphics.Typeface.BOLD);
+        tvStock.setTextColor(Color.parseColor("#757575"));
+        tvStock.setGravity(android.view.Gravity.CENTER);
+        LinearLayout.LayoutParams stockLp = new LinearLayout.LayoutParams(dp(100),
+                LinearLayout.LayoutParams.WRAP_CONTENT);
+        stockLp.gravity = android.view.Gravity.CENTER_VERTICAL;
+        tvStock.setLayoutParams(stockLp);
+        row.addView(tvStock);
+
+        return row;
     }
 
     private View buildSkuRow(int idx) {
         SkuDetail sku = allSkus.get(idx);
 
-        // Card container
         androidx.cardview.widget.CardView card = new androidx.cardview.widget.CardView(requireContext());
         LinearLayout.LayoutParams cardLp = new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
-        cardLp.topMargin = dp(8);
+        cardLp.topMargin = dp(4);
         card.setLayoutParams(cardLp);
         card.setRadius(dp(8));
         card.setCardElevation(dp(2));
         card.setCardBackgroundColor(Color.WHITE);
 
-        LinearLayout inner = new LinearLayout(requireContext());
-        inner.setOrientation(LinearLayout.HORIZONTAL);
-        inner.setPadding(dp(14), dp(12), dp(14), dp(12));
+        LinearLayout row = new LinearLayout(requireContext());
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setPadding(dp(16), dp(14), dp(16), dp(14));
+        row.setGravity(android.view.Gravity.CENTER_VERTICAL);
 
-        // Left: product info
-        LinearLayout info = new LinearLayout(requireContext());
-        info.setOrientation(LinearLayout.VERTICAL);
-        info.setLayoutParams(new LinearLayout.LayoutParams(0,
-                LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+        // Product name — left-aligned, bold
+        TextView tvName = makeCell(sku.productName, W_NAME, android.view.Gravity.START, 14f,
+                Color.parseColor("#1A1A2E"), android.graphics.Typeface.BOLD);
 
-        TextView tvName = new TextView(requireContext());
-        tvName.setText(sku.productName);
-        tvName.setTextColor(Color.parseColor("#1A1A2E"));
-        tvName.setTextSize(15f);
-        tvName.setTypeface(null, android.graphics.Typeface.BOLD);
+        // SKU code
+        TextView tvSku = makeCell(
+                sku.skuCode != null ? sku.skuCode : "—", W_COL,
+                android.view.Gravity.CENTER, 13f, Color.parseColor("#424242"),
+                android.graphics.Typeface.NORMAL);
 
-        TextView tvMeta = new TextView(requireContext());
-        String meta = (sku.skuCode != null ? sku.skuCode : "")
-                + (sku.category != null && !sku.category.isEmpty() ? "  ·  " + sku.category : "");
-        tvMeta.setText(meta);
-        tvMeta.setTextColor(Color.parseColor("#757575"));
-        tvMeta.setTextSize(12f);
+        // Category
+        TextView tvCat = makeCell(
+                sku.category != null && !sku.category.isEmpty() ? sku.category : "—", W_COL,
+                android.view.Gravity.CENTER, 13f, Color.parseColor("#424242"),
+                android.graphics.Typeface.NORMAL);
 
-        TextView tvPrice = new TextView(requireContext());
-        tvPrice.setText(String.format("MRP ₹%.0f  ·  Sale ₹%.0f  ·  GST %.0f%%",
-                sku.mrp, sku.salePrice, sku.gstPercent));
-        tvPrice.setTextColor(Color.parseColor("#9E9E9E"));
-        tvPrice.setTextSize(11f);
+        // MRP
+        TextView tvMrp = makeCell(
+                String.format("₹%.0f", sku.mrp), W_COL,
+                android.view.Gravity.CENTER, 13f, Color.parseColor("#424242"),
+                android.graphics.Typeface.NORMAL);
 
-        info.addView(tvName);
-        info.addView(tvMeta);
-        info.addView(tvPrice);
+        // Sale price
+        TextView tvSale = makeCell(
+                String.format("₹%.0f", sku.salePrice), W_COL,
+                android.view.Gravity.CENTER, 13f, Color.parseColor("#2E7D32"),
+                android.graphics.Typeface.BOLD);
 
-        // Right: availability badge
+        // GST
+        TextView tvGst = makeCell(
+                String.format("%.0f%%", sku.gstPercent), W_COL,
+                android.view.Gravity.CENTER, 13f, Color.parseColor("#424242"),
+                android.graphics.Typeface.NORMAL);
+
+        // Stock status — plain coloured text, no background
         TextView tvBadge = new TextView(requireContext());
         tvBadge.setTag("badge_" + idx);
-        tvBadge.setPadding(dp(10), dp(4), dp(10), dp(4));
         tvBadge.setTextSize(12f);
         tvBadge.setTypeface(null, android.graphics.Typeface.BOLD);
         tvBadge.setGravity(android.view.Gravity.CENTER);
-        LinearLayout.LayoutParams badgeLp = new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        LinearLayout.LayoutParams badgeLp = new LinearLayout.LayoutParams(dp(100),
+                LinearLayout.LayoutParams.WRAP_CONTENT);
         badgeLp.gravity = android.view.Gravity.CENTER_VERTICAL;
-        badgeLp.setMarginStart(dp(8));
         tvBadge.setLayoutParams(badgeLp);
         applyBadgeStyle(tvBadge, skuCounts[idx]);
 
-        inner.addView(info);
-        inner.addView(tvBadge);
-        card.addView(inner);
+        row.addView(tvName);
+        row.addView(tvSku);
+        row.addView(tvCat);
+        row.addView(tvMrp);
+        row.addView(tvSale);
+        row.addView(tvGst);
+        row.addView(tvBadge);
+        card.addView(row);
         return card;
+    }
+
+    private TextView makeCell(String text, float weight, int gravity,
+                              float textSizeSp, int color, int typefaceStyle) {
+        TextView tv = new TextView(requireContext());
+        tv.setText(text);
+        tv.setTextSize(textSizeSp);
+        tv.setTextColor(color);
+        tv.setTypeface(null, typefaceStyle);
+        tv.setGravity(gravity);
+        tv.setSingleLine(true);
+        tv.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        tv.setLayoutParams(new LinearLayout.LayoutParams(0,
+                LinearLayout.LayoutParams.WRAP_CONTENT, weight));
+        return tv;
     }
 
     private void updateBadgeForRow(int idx) {
@@ -218,17 +321,15 @@ public class StockCheckFragment extends Fragment {
     }
 
     private void applyBadgeStyle(TextView badge, int count) {
+        badge.setBackgroundColor(Color.TRANSPARENT);
         if (count < 0) {
             badge.setText("Loading…");
-            badge.setBackgroundColor(Color.parseColor("#F5F5F5"));
             badge.setTextColor(Color.parseColor("#9E9E9E"));
         } else if (count == 0) {
-            badge.setText("OUT OF STOCK");
-            badge.setBackgroundColor(Color.parseColor("#FFEBEE"));
+            badge.setText("Out of Stock");
             badge.setTextColor(Color.parseColor("#C62828"));
         } else {
-            badge.setText(count + " IN STORE");
-            badge.setBackgroundColor(Color.parseColor("#E8F5E9"));
+            badge.setText(count + " In Store");
             badge.setTextColor(Color.parseColor("#2E7D32"));
         }
     }

@@ -7,7 +7,6 @@ import android.widget.Toast;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.lifecycle.Observer;
 import androidx.preference.EditTextPreference;
-import androidx.preference.ListPreference;
 import androidx.preference.Preference;
 import androidx.preference.PreferenceCategory;
 import androidx.preference.PreferenceFragmentCompat;
@@ -45,15 +44,6 @@ public class SettingsActivity extends AppCompatActivity {
             PreferenceScreen screen = getPreferenceManager().createPreferenceScreen(ctx);
             SettingsRepository settings = SettingsRepository.getInstance();
 
-            EditTextPreference readerIpPref = new EditTextPreference(ctx);
-            readerIpPref.setKey("reader_ip");
-            readerIpPref.setTitle("Reader IP Address");
-            readerIpPref.setSummaryProvider(pref -> settings.getReaderIp());
-            readerIpPref.setOnPreferenceChangeListener((pref, newValue) -> {
-                settings.setReaderIp((String) newValue);
-                return true;
-            });
-
             EditTextPreference baseUrlPref = new EditTextPreference(ctx);
             baseUrlPref.setKey("base_url");
             baseUrlPref.setTitle("Backend URL");
@@ -63,34 +53,24 @@ public class SettingsActivity extends AppCompatActivity {
                 return true;
             });
 
-            ListPreference antCountPref = new ListPreference(ctx);
-            antCountPref.setKey("ant_count");
-            antCountPref.setTitle("Antenna Count");
-            antCountPref.setEntries(new String[]{"1", "2", "3", "4"});
-            antCountPref.setEntryValues(new String[]{"1", "2", "3", "4"});
-            antCountPref.setValue(String.valueOf(settings.getAntCount()));
-            antCountPref.setOnPreferenceChangeListener((pref, newValue) -> {
-                settings.setAntCount(Integer.parseInt((String) newValue));
-                return true;
-            });
-
             Preference testConnectionPref = new Preference(ctx);
-            testConnectionPref.setTitle("Test Reader Connection");
+            testConnectionPref.setTitle("Test R9602 Connection");
+            testConnectionPref.setSummary("Connect R9602 via USB, then tap to test");
             testConnectionPref.setOnPreferenceClickListener(pref -> {
-                String ip = settings.getReaderIp();
                 RfidCardReaderManager mgr = RfidCardReaderManager.getInstance();
                 Observer<ReaderState>[] obs = new Observer[1];
                 obs[0] = state -> {
                     if (state instanceof ReaderState.Idle) {
                         mgr.getStateLiveData().removeObserver(obs[0]);
-                        Toast.makeText(ctx, "Connected to " + ip, Toast.LENGTH_SHORT).show();
+                        Toast.makeText(ctx, "R9602 connected via USB", Toast.LENGTH_SHORT).show();
                     } else if (state instanceof ReaderState.ReaderError) {
                         mgr.getStateLiveData().removeObserver(obs[0]);
-                        Toast.makeText(ctx, ((ReaderState.ReaderError) state).message, Toast.LENGTH_SHORT).show();
+                        Toast.makeText(ctx, ((ReaderState.ReaderError) state).message,
+                                Toast.LENGTH_LONG).show();
                     }
                 };
                 mgr.getStateLiveData().observeForever(obs[0]);
-                mgr.connect(ip);
+                mgr.connect();
                 return true;
             });
 
@@ -134,8 +114,6 @@ public class SettingsActivity extends AppCompatActivity {
             PreferenceCategory hwCategory = new PreferenceCategory(ctx);
             hwCategory.setTitle("Hardware");
             screen.addPreference(hwCategory);
-            hwCategory.addPreference(readerIpPref);
-            hwCategory.addPreference(antCountPref);
             hwCategory.addPreference(testConnectionPref);
             hwCategory.addPreference(testScanPref);
 

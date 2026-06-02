@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- R9602 RFID Card Issuer — CDC serial device (USB 2.0, 9600 baud) -->
+    <!-- class="2" = CDC Communications class, matches the R9602 serial interface -->
+    <usb-device class="2" />
+</resources>

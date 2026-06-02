@@ -30,21 +30,6 @@ public class SettingsRepository {
         prefs.edit().putString("base_url", url).apply();
     }
 
-    public String getReaderIp() {
-        return prefs.getString("reader_ip", "192.168.1.1");
-    }
-
-    public void setReaderIp(String ip) {
-        prefs.edit().putString("reader_ip", ip).apply();
-    }
-
-    public int getAntCount() {
-        return prefs.getInt("ant_count", 1);
-    }
-
-    public void setAntCount(int count) {
-        prefs.edit().putInt("ant_count", count).apply();
-    }
 
     public boolean isMockMode() {
         return prefs.getBoolean("mock_mode", false);

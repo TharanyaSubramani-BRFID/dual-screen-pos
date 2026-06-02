@@ -8,6 +8,7 @@ import androidx.lifecycle.ViewModel;
 import com.example.dualscreenpos.data.model.BulkUploadRequest;
 import com.example.dualscreenpos.data.model.CheckoutRequest;
 import com.example.dualscreenpos.data.model.CheckoutResponse;
+import com.example.dualscreenpos.data.model.ReceiptData;
 import com.example.dualscreenpos.data.model.ReturnRoute;
 import com.example.dualscreenpos.data.model.StorageBin;
 import com.example.dualscreenpos.data.model.TransactionRequest;
@@ -81,16 +82,16 @@ public class MainViewModel extends ViewModel {
 
     private final List<ReturnRoute> cart = new ArrayList<>();
     private Observer<ReaderState> pendingScanObserver = null;
+    private ReceiptData lastReceiptData = null;
+
+    public ReceiptData getLastReceiptData() { return lastReceiptData; }
 
     public MainViewModel() {
         readerManager = RfidCardReaderManager.getInstance();
         itemRepo = ItemRepository.getInstance();
         settingsRepo = SettingsRepository.getInstance();
 
-        String ip = settingsRepo.getReaderIp();
-        if (ip != null && !ip.isEmpty()) {
-            readerManager.connect(ip);
-        }
+        readerManager.connect();
     }
 
     // ── LiveData accessors ────────────────────────────────────────────────────
@@ -245,6 +246,7 @@ public class MainViewModel extends ViewModel {
         RetailApi.getInstance(settingsRepo.getBaseUrl())
                 .submitCheckout(req, new RetailApi.ApiCallback<CheckoutResponse>() {
                     @Override public void onSuccess(CheckoutResponse result) {
+                        lastReceiptData = buildReceipt(items, result);
                         cart.clear();
                         uiStateLiveData.postValue(new UiState.Success(label, "CHECKOUT"));
                     }
@@ -394,6 +396,39 @@ public class MainViewModel extends ViewModel {
                 }
             }
         });
+    }
+
+    private ReceiptData buildReceipt(List<ReturnRoute> items, CheckoutResponse response) {
+        ReceiptData r = new ReceiptData();
+        r.checkoutNumber = response != null && response.checkoutNumber != null
+                ? response.checkoutNumber : "CO-???";
+        r.dateTime = new java.text.SimpleDateFormat("dd-MM-yyyy  HH:mm:ss",
+                java.util.Locale.getDefault()).format(new java.util.Date());
+        r.subtotal   = response != null ? response.subtotal   : 0;
+        r.gstTotal   = response != null ? response.gstTotal   : 0;
+        r.grandTotal = response != null ? response.grandTotal : 0;
+
+        // Group identical SKUs into single receipt line with quantity
+        java.util.LinkedHashMap<Integer, ReceiptData.ReceiptItem> grouped = new java.util.LinkedHashMap<>();
+        for (ReturnRoute route : items) {
+            if (route.skuDetail == null) continue;
+            int skuId = route.skuDetail.id;
+            if (grouped.containsKey(skuId)) {
+                grouped.get(skuId).quantity++;
+                grouped.get(skuId).lineTotal += route.skuDetail.salePrice
+                        * (1 + route.skuDetail.gstPercent / 100.0);
+            } else {
+                ReceiptData.ReceiptItem item = new ReceiptData.ReceiptItem();
+                item.productName = route.skuDetail.productName;
+                item.salePrice   = route.skuDetail.salePrice;
+                item.gstPercent  = route.skuDetail.gstPercent;
+                item.lineTotal   = route.skuDetail.salePrice * (1 + route.skuDetail.gstPercent / 100.0);
+                item.quantity    = 1;
+                grouped.put(skuId, item);
+            }
+        }
+        r.items = new ArrayList<>(grouped.values());
+        return r;
     }
 
     private List<String> epcsOf(List<ReturnRoute> items) {
